@@ -1,0 +1,73 @@
+# Microsoft 365 Business Premium Security Baseline Configuration
+
+# Organization settings
+OrganizationName: "YourCompanyName"
+RetentionPeriodYears: 7
+
+# Defender for Office 365 settings
+PolicyPreset: "Standard"  # Options: Standard, Strict
+ServiceAccounts: [
+    "serviceaccount@yourdomain.com",
+    "noreply@yourdomain.com"
+]
+
+# Entra ID settings
+EnableSecurityDefaults: false  # Set to true to use Security Defaults instead of custom CA policies
+
+# Intune/Device Management settings
+IntuneGroupName: "All Users"  # Name of the group to assign device policies
+
+# Additional settings
+DefaultAdminEmail: "admin@yourdomain.com"
+NotificationEmail: "security@yourdomain.com"
+
+# Custom DLP sensitive information types (optional)
+CustomSensitiveTypes: [
+    "Employee ID",
+    "Customer Number",
+    "Internal Project Code"
+]
+
+# Retention policy exceptions (optional)
+RetentionExclusions: [
+    "temp-*@yourdomain.com",
+    "test-*@yourdomain.com"
+]
+
+# Attack Surface Reduction rule overrides (optional)
+# Use "Enabled", "AuditMode", or "Disabled"
+ASRRuleOverrides: {
+    "BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550": "Enabled",  # Block executable content from email
+    "D4F940AB-401B-4EFC-AADC-AD5F3C50688A": "AuditMode"  # Block Office child processes
+}
+
+# Conditional Access settings
+ConditionalAccess:
+  # Geographic access restrictions
+  AllowedCountries: ["US", "CA", "GB", "AU", "DE", "FR", "NL", "BE", "LU"]
+  
+  # Break glass/emergency accounts (exempt from all CA policies)
+  BreakGlassAccounts: [
+    "breakglass1@yourdomain.com",
+    "breakglass2@yourdomain.com"
+  ]
+  
+  # Deploy policies in report-only mode initially
+  ReportOnlyMode: true
+  
+  # Persona group settings
+  PersonaGroups:
+    InternalGroupName: "CA-Internals-DynamicGroup"
+    AdminGroupName: "CA-Admins-DynamicGroup"
+    
+  # Trusted locations (optional - for on-premises networks)
+  TrustedLocations: [
+    {
+      Name: "Corporate HQ",
+      IPRanges: ["203.0.113.0/24", "198.51.100.0/24"]
+    },
+    {
+      Name: "Branch Office",
+      IPRanges: ["192.0.2.0/24"]
+    }
+  ]
