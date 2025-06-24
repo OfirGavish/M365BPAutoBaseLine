@@ -140,10 +140,10 @@ function New-ConditionalAccessPolicies {
             Write-Log "Legacy authentication blocking policy already exists."
         }
         
-        # Policy 3: Require compliant devices for admins
+        # Policy 3: Require compliant devices for admins (start in report-only mode for safety)
         $adminDevicePolicy = @{
             displayName = "M365BP-Admin-Require-Compliant-Device"
-            state = "enabled"
+            state = "enabledForReportingButNotEnforced"  # Start in report-only mode to prevent lockout
             conditions = @{
                 users = @{
                     includeRoles = @(
@@ -165,7 +165,8 @@ function New-ConditionalAccessPolicies {
         $existingAdminPolicy = Get-MgIdentityConditionalAccessPolicy -Filter "displayName eq 'M365BP-Admin-Require-Compliant-Device'" -ErrorAction SilentlyContinue
         if (!$existingAdminPolicy) {
             New-MgIdentityConditionalAccessPolicy -BodyParameter $adminDevicePolicy
-            Write-Log "Created admin device compliance policy."
+            Write-Log "Created admin device compliance policy in REPORT-ONLY mode."
+            Write-Log "IMPORTANT: Review and manually enable the 'M365BP-Admin-Require-Compliant-Device' policy after testing." -Level "WARNING"
         } else {
             Write-Log "Admin device compliance policy already exists."
         }

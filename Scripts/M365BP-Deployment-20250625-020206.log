@@ -1,0 +1,22 @@
+[2025-06-25 02:02:06] [INFO] Starting M365 Business Premium baseline deployment for: MSCloudNinja
+[2025-06-25 02:02:06] [INFO] Components to deploy: All
+[2025-06-25 02:02:06] [INFO] Log file: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-20250625-020206.log
+[2025-06-25 02:02:06] [INFO] Validating prerequisites...
+[2025-06-25 02:02:06] [WARNING] Missing required modules: Microsoft.Graph.Intune
+[2025-06-25 02:02:06] [INFO] Installing missing modules...
+[2025-06-25 02:02:20] [INFO] Installed module: Microsoft.Graph.Intune
+[2025-06-25 02:02:20] [SUCCESS] Prerequisites validation completed
+[2025-06-25 02:02:20] [INFO] Using default configuration
+[2025-06-25 02:02:20] [INFO] Starting deployment process...
+[2025-06-25 02:02:20] [INFO] === Deploying Defender for Office 365 Baseline ===
+[2025-06-25 02:02:22] [SUCCESS] Defender for Office 365 deployment completed
+[2025-06-25 02:02:22] [INFO] === Deploying Entra ID Security Baseline ===
+[2025-06-25 02:03:23] [SUCCESS] Entra ID deployment completed
+[2025-06-25 02:03:23] [INFO] === Deploying Microsoft Purview Baseline ===
+[2025-06-25 02:03:43] [SUCCESS] Microsoft Purview deployment completed
+[2025-06-25 02:03:43] [INFO] === Deploying Defender for Business Baseline ===
+[2025-06-25 02:05:28] [SUCCESS] Defender for Business deployment completed
+[2025-06-25 02:05:28] [INFO] === Deploying Conditional Access Baseline ===
+[2025-06-25 02:05:34] [ERROR] Error deploying Conditional Access baseline: A parameter with the name 'WhatIf' was defined multiple times for the command.
+[2025-06-25 02:05:34] [ERROR] Deployment failed: A parameter with the name 'WhatIf' was defined multiple times for the command.
+[2025-06-25 02:05:34] [ERROR] Check the log file for detailed error information: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-20250625-020206.log

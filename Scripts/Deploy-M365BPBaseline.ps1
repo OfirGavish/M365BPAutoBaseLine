@@ -7,7 +7,8 @@
     - Defender for Office 365
     - Entra ID (Azure AD) security controls
     - Microsoft Purview compliance
-    - Defender for Business (Endpoint)
+    - Enhanced Defender for Business (Endpoint) with MDEAutomator integration
+    - Conditional Access policies (deployed in report-only mode for safety)
     - Tenant-wide hardening
 
 .PARAMETER Components
@@ -24,6 +25,9 @@
 
 .PARAMETER ConfigFile
     Path to configuration file with custom settings (optional)
+
+.PARAMETER DeployAdvancedMDEFeatures
+    Deploy advanced MDE features including Live Response scripts, custom detections, and threat intelligence (default: true)
 
 .EXAMPLE
     .\Deploy-M365BPBaseline.ps1 -Components @("All") -OrganizationName "Contoso" -TenantId "12345678-1234-1234-1234-123456789012" -AdminEmail "admin@contoso.com"
@@ -51,12 +55,15 @@ param(
     
     [switch]$RunPostDeploymentTests = $true,
     
-    [switch]$GenerateTestReports = $true
+    [switch]$GenerateTestReports = $true,
+    
+    [switch]$DeployAdvancedMDEFeatures = $true
 )
 
 # Global variables
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $LogFile = Join-Path $ScriptPath "M365BP-Deployment-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+$TranscriptFile = Join-Path $ScriptPath "M365BP-FullTranscript-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 
 # Function to log messages
 function Write-Log {
@@ -141,6 +148,9 @@ function Get-Configuration {
         EnableSecurityDefaults = $false
         ServiceAccounts = @()
         IntuneGroupName = "All Users"
+        DeployAdvancedFeatures = $DeployAdvancedMDEFeatures  # Use parameter to control advanced features
+        AllowedCountries = @("US", "CA", "GB", "AU", "DE", "FR", "NL", "BE", "LU")
+        BreakGlassAccounts = @()
     }
     
     if (![string]::IsNullOrEmpty($ConfigFile) -and (Test-Path $ConfigFile)) {
@@ -169,6 +179,11 @@ function Deploy-DefenderO365 {
             $params = @{
                 ServiceAccounts = $Config.ServiceAccounts
                 PolicyPreset = $Config.PolicyPreset
+            }
+            
+            # Add WhatIf parameter if specified
+            if ($WhatIf) {
+                $params.Add("WhatIf", $true)
             }
             
             if ($WhatIf) {
@@ -201,12 +216,19 @@ function Deploy-EntraID {
                 AdminConsentReviewers = @($AdminEmail)
             }
             
+            # Add WhatIf parameter if specified
+            if ($WhatIf) {
+                $params.Add("WhatIf", $true)
+            }
+            
             if ($WhatIf) {
                 Write-Log "WHATIF: Would execute Deploy-EntraIDBaseline.ps1 with parameters: $($params | ConvertTo-Json)"
             } else {
                 & $scriptPath @params
             }
             Write-Log "Entra ID deployment completed" -Level "SUCCESS"
+            Write-Log "IMPORTANT: The 'M365BP-Admin-Require-Compliant-Device' policy was created in REPORT-ONLY mode to prevent admin lockout." -Level "WARNING"
+            Write-Log "Review the policy reports before enabling it to ensure all admin devices are compliant." -Level "WARNING"
         } else {
             Write-Log "Entra ID script not found: $scriptPath" -Level "ERROR"
         }
@@ -231,6 +253,11 @@ function Deploy-Purview {
                 RetentionPeriodYears = $Config.RetentionPeriodYears
             }
             
+            # Add WhatIf parameter if specified
+            if ($WhatIf) {
+                $params.Add("WhatIf", $true)
+            }
+            
             if ($WhatIf) {
                 Write-Log "WHATIF: Would execute Deploy-PurviewBaseline.ps1 with parameters: $($params | ConvertTo-Json)"
             } else {
@@ -251,28 +278,43 @@ function Deploy-Purview {
 function Deploy-DefenderBusiness {
     param($Config)
     
-    Write-Log "=== Deploying Defender for Business Baseline ===" -Level "INFO"
+    Write-Log "=== Deploying Enhanced Defender for Business Baseline ===" -Level "INFO"
     
     try {
-        $scriptPath = Join-Path $ScriptPath "Deploy-DefenderBusinessBaseline.ps1"
+        $scriptPath = Join-Path $ScriptPath "Deploy-DefenderBusinessBaseline-Enhanced.ps1"
         if (Test-Path $scriptPath) {
             $params = @{
                 TenantId = $TenantId
                 IntuneGroupName = $Config.IntuneGroupName
             }
             
+            # Add enhanced parameters for comprehensive deployment
+            if ($Config.DeployAdvancedFeatures) {
+                $params.DeployMDEAutomator = $true
+                $params.DeployLiveResponseScripts = $true
+                $params.InstallCustomDetections = $true
+                $params.ConfigureThreatIntelligence = $true
+                $params.TestMDEEnvironment = $true
+            }
+            
+            # Add WhatIf parameter if specified
             if ($WhatIf) {
-                Write-Log "WHATIF: Would execute Deploy-DefenderBusinessBaseline.ps1 with parameters: $($params | ConvertTo-Json)"
+                $params.Add("WhatIf", $true)
+            }
+            
+            if ($WhatIf) {
+                Write-Log "WHATIF: Would execute Deploy-DefenderBusinessBaseline-Enhanced.ps1 with parameters: $($params | ConvertTo-Json)"
             } else {
                 & $scriptPath @params
             }
-            Write-Log "Defender for Business deployment completed" -Level "SUCCESS"
+            Write-Log "Enhanced Defender for Business deployment completed" -Level "SUCCESS"
+            Write-Log "Advanced features available: Live Response, Custom Detections, Threat Intelligence" -Level "SUCCESS"
         } else {
-            Write-Log "Defender for Business script not found: $scriptPath" -Level "ERROR"
+            Write-Log "Enhanced Defender for Business script not found: $scriptPath" -Level "ERROR"
         }
     }
     catch {
-        Write-Log "Error deploying Defender for Business baseline: $($_.Exception.Message)" -Level "ERROR"
+        Write-Log "Error deploying Enhanced Defender for Business baseline: $($_.Exception.Message)" -Level "ERROR"
         throw
     }
 }
@@ -291,6 +333,11 @@ function Deploy-ConditionalAccess {
                 ReportMode = $true  # Start with report-only mode for safety
                 AllowedCountries = $Config.AllowedCountries
                 BreakGlassAccounts = $Config.BreakGlassAccounts
+            }
+            
+            # Add WhatIf parameter if specified
+            if ($WhatIf) {
+                $params.Add("WhatIf", $true)
             }
             
             if ($WhatIf) {
@@ -346,7 +393,21 @@ function New-DeploymentReport {
 
     foreach ($component in $Components) {
         if ($component -eq "All") { continue }
-        $htmlReport += "        <tr><td>$component</td><td class='success'>Completed</td><td>Baseline configuration applied</td></tr>`n"
+        $status = "Completed"
+        $notes = "Baseline configuration applied"
+        
+        # Add specific notes for enhanced features
+        if ($component -eq "DefenderBusiness" -and $DeployAdvancedMDEFeatures) {
+            $notes = "Enhanced baseline with Live Response, Custom Detections, and Threat Intelligence"
+        }
+        elseif ($component -eq "EntraID") {
+            $notes = "Policies deployed in REPORT-ONLY mode for safety"
+        }
+        elseif ($component -eq "ConditionalAccess") {
+            $notes = "All policies deployed in REPORT-ONLY mode"
+        }
+        
+        $htmlReport += "        <tr><td>$component</td><td class='success'>$status</td><td>$notes</td></tr>`n"
     }
 
     $htmlReport += @"
@@ -354,12 +415,29 @@ function New-DeploymentReport {
     
     <h2>Next Steps</h2>
     <ul>
+        <li><strong>Review Conditional Access policies:</strong> All policies were deployed in REPORT-ONLY mode for safety</li>
+        <li><strong>Monitor policy reports:</strong> Check Azure AD sign-in logs to see policy impact</li>
+        <li><strong>Enable policies:</strong> Use the Enable-ConditionalAccessPolicies.ps1 script to safely enable policies</li>
+        <li><strong>Test enhanced MDE features:</strong> $(if($DeployAdvancedMDEFeatures) { 'Live Response scripts, custom detections, and threat intelligence are now available' } else { 'Consider re-running with -DeployAdvancedMDEFeatures to enable advanced capabilities' })</li>
+        <li><strong>Test with pilot users:</strong> Enable policies gradually for pilot groups first</li>
         <li>Review all policies in the respective admin centers</li>
-        <li>Test policy effectiveness with pilot users</li>
-        <li>Monitor security alerts and adjust as needed</li>
+        <li>Monitor security dashboard for alerts and tune detection rules as needed</li>
         <li>Schedule regular policy reviews and updates</li>
         <li>Train users on new security features</li>
     </ul>
+    
+    <h2>Important Safety Information</h2>
+    <div style="background-color: #fff3cd; padding: 15px; border: 1px solid #ffeaa7; border-radius: 5px;">
+        <h3>⚠️ Admin Device Compliance Policy</h3>
+        <p>The <strong>M365BP-Admin-Require-Compliant-Device</strong> policy was created in REPORT-ONLY mode to prevent admin lockout.</p>
+        <p><strong>Before enabling this policy:</strong></p>
+        <ul>
+            <li>Ensure your admin device is compliant with Intune policies</li>
+            <li>Have a break-glass account available</li>
+            <li>Test with a non-critical admin account first</li>
+        </ul>
+        <p>Use the <code>Enable-ConditionalAccessPolicies.ps1</code> script to safely enable policies after testing.</p>
+    </div>
     
     <h2>Log File</h2>
     <p>Detailed deployment logs can be found at: <code>$LogFile</code></p>
@@ -425,6 +503,9 @@ function Invoke-PostDeploymentValidation {
 
 # Main execution
 try {
+    # Start transcript to capture all output
+    Start-Transcript -Path $TranscriptFile -Append
+    
     Show-Banner
     
     # Validate prerequisites
@@ -459,6 +540,7 @@ try {
     Write-Log "=== Deployment Completed Successfully ===" -Level "SUCCESS"
     Write-Log "Report generated: $reportPath" -Level "SUCCESS"
     Write-Log "Log file: $LogFile" -Level "SUCCESS"
+    Write-Log "Full transcript file: $TranscriptFile" -Level "SUCCESS"
     
     # Open report if not in WhatIf mode
     if (!$WhatIf -and (Test-Path $reportPath)) {
@@ -468,5 +550,10 @@ try {
 catch {
     Write-Log "Deployment failed: $($_.Exception.Message)" -Level "ERROR"
     Write-Log "Check the log file for detailed error information: $LogFile" -Level "ERROR"
+    Write-Log "Check the full transcript for complete output: $TranscriptFile" -Level "ERROR"
     exit 1
+}
+finally {
+    # Stop transcript
+    Stop-Transcript
 }

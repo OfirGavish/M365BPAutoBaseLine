@@ -1,0 +1,145 @@
+[2025-06-25 02:02:06] [INFO] Starting M365 Business Premium baseline deployment for: MSCloudNinja               [2025-06-25 02:02:06] [INFO] Components to deploy: All                                                          [2025-06-25 02:02:06] [INFO] Log file: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-20250625-020206.log                                                                                            [2025-06-25 02:02:06] [INFO] Validating prerequisites...                                                        [2025-06-25 02:02:06] [WARNING] Missing required modules: Microsoft.Graph.Intune                                [2025-06-25 02:02:06] [INFO] Installing missing modules...                                                      PackageManagement\Install-Package : Package 'Microsoft.Graph.Intune' failed to be installed because: End of     Central Directory record could not be found.                                                                    At C:\Users\ofirga\OneDrive - Essence                                                                           Security\מסמכים\WindowsPowerShell\Modules\PowerShellGet\2.2.5\PSModule.psm1:9711 char:34                        + ... talledPackages = PackageManagement\Install-Package @PSBoundParameters                                     +                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                     
+    + CategoryInfo          : InvalidResult: (Microsoft.Graph.Intune:String) [Install-Package], Exception       
+    + FullyQualifiedErrorId : Package '{0}' failed to be installed because: {1},Microsoft.PowerShell.PackageMa  
+   nagement.Cmdlets.InstallPackage
+
+[2025-06-25 02:02:20] [INFO] Installed module: Microsoft.Graph.Intune
+[2025-06-25 02:02:20] [SUCCESS] Prerequisites validation completed
+[2025-06-25 02:02:20] [INFO] Using default configuration
+[2025-06-25 02:02:20] [INFO] Starting deployment process...
+[2025-06-25 02:02:20] [INFO] === Deploying Defender for Office 365 Baseline ===
+[2025-06-25 02:02:21] [INFO] Starting Defender for Office 365 baseline deployment...
+[2025-06-25 02:02:21] [INFO] Checking prerequisites...
+[2025-06-25 02:02:21] [INFO] Prerequisites check completed.
+[2025-06-25 02:02:21] [INFO] Connecting to Exchange Online...
+Error Acquiring Token:
+The type initializer for 'Microsoft.Identity.Client.NativeInterop.API' threw an exception. See https://aka.ms/msal-net-wam#troubleshooting
+[2025-06-25 02:02:22] [ERROR] Failed to connect to Exchange Online: The type initializer for 'Microsoft.Identity.Client.NativeInterop.API' threw an exception. See https://aka.ms/msal-net-wam#troubleshooting
+[2025-06-25 02:02:22] [ERROR] Script execution failed: The type initializer for 'Microsoft.Identity.Client.NativeInterop.API' threw an exception. See https://aka.ms/msal-net-wam#troubleshooting
+[2025-06-25 02:02:22] [INFO] Disconnecting from Exchange Online...
+[2025-06-25 02:02:22] [INFO] Disconnected from Exchange Online.
+[2025-06-25 02:02:22] [SUCCESS] Defender for Office 365 deployment completed
+[2025-06-25 02:02:22] [INFO] === Deploying Entra ID Security Baseline ===
+[2025-06-25 02:02:22] [INFO] Starting Entra ID baseline deployment...
+[2025-06-25 02:02:22] [INFO] Checking prerequisites...
+[2025-06-25 02:02:22] [INFO] Prerequisites check completed.
+[2025-06-25 02:02:22] [INFO] Connecting to Microsoft Graph...
+[2025-06-25 02:02:56] [INFO] Successfully connected to Microsoft Graph.
+[2025-06-25 02:02:56] [INFO] Creating Conditional Access policies...
+
+[2025-06-25 02:03:10] [INFO] Created MFA policy for all users.
+Id                                   CreatedDateTime       Description DisplayName                        Modif
+                                                                                                          iedDa 
+                                                                                                          teTim 
+                                                                                                          e     
+--                                   ---------------       ----------- -----------                        ----- 
+dad28eb6-dc3a-4ba2-a7e9-669532061646 6/24/2025 11:03:09 PM             M365BP-Require-MFA-All-Users
+e11c036b-a5c0-448a-bbab-cd16ad9009a5 6/24/2025 11:03:11 PM             M365BP-Block-Legacy-Authentication       
+[2025-06-25 02:03:12] [INFO] Created legacy authentication blocking policy.
+75bc5f23-89ab-41cf-9877-3e32c0dcfee5 6/24/2025 11:03:13 PM             M365BP-Admin-Require-Compliant-...      
+[2025-06-25 02:03:15] [INFO] Created admin device compliance policy.
+[2025-06-25 02:03:15] [INFO] Enabling admin consent workflow...
+Update-MgPolicyAdminConsentRequestPolicy : No HTTP resource was found that matches the request URI 'https://api
+.accessreviews.identitygovernance.azure.com/accessReviews/v2.0/me/adminConsentRequestPolicy?ring=2'.
+Status: 404 (NotFound)
+ErrorCode:
+Date: 2025-06-24T23:03:16
+Headers:
+Transfer-Encoding             : chunked
+Vary                          : Accept-Encoding
+Strict-Transport-Security     : max-age=31536000
+request-id                    : 103f8740-37cc-4661-b134-3552efc01c30
+client-request-id             : 819fe094-17ee-4c84-8385-931daa14cc80
+x-ms-ags-diagnostic           : {"ServerInfo":{"DataCenter":"UAE
+North","Slice":"E","Ring":"2","ScaleUnit":"001","RoleInstance":"DX2PEPF000000E8"}}
+Date                          : Tue, 24 Jun 2025 23:03:15 GMT
+At C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\Deploy-EntraIDBaseline.ps1:198 char:13
++             Update-MgPolicyAdminConsentRequestPolicy -BodyParameter $ ...
++             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: ({ Headers = , b...RequestPolicy }:<>f__AnonymousType0`2) [Upd  
+   ate-MgPolicy...stPolicy_Update], Exception
+    + FullyQualifiedErrorId : Microsoft.Graph.PowerShell.Cmdlets.UpdateMgPolicyAdminConsentRequestPolicy_Updat  
+   e
+[2025-06-25 02:03:16] [INFO] Admin consent workflow enabled with reviewers: ofir@mscloudninja.com
+[2025-06-25 02:03:16] [INFO] Configuring Privileged Identity Management...
+[2025-06-25 02:03:23] [INFO] PIM configuration completed. Manual review recommended for role assignments.
+[2025-06-25 02:03:23] [INFO] Configuring authentication methods...
+[2025-06-25 02:03:23] [INFO] Authentication methods configuration completed. Manual review recommended for SMS disabling.
+[2025-06-25 02:03:23] [INFO] Enabling Continuous Access Evaluation...
+[2025-06-25 02:03:23] [INFO] Continuous Access Evaluation check completed. Verify in Azure portal if needed.    
+[2025-06-25 02:03:23] [INFO] Entra ID baseline deployment completed successfully!
+[2025-06-25 02:03:23] [INFO] Disconnecting from Microsoft Graph...
+
+ClientId               : 14d82eec-204b-4c2f-b7e8-296a70dab67e
+TenantId               : df5c1b3a-b49f-406f-b067-a4a6fae72629
+Scopes                 : {Application.Read.All, Application.ReadWrite.All, DeviceManagementApps.Read.All,       
+                         DeviceManagementApps.ReadWrite.All...}
+AuthType               : Delegated
+TokenCredentialType    : InteractiveBrowser
+CertificateThumbprint  :
+CertificateSubjectName :
+SendCertificateChain   : False
+Account                : cloudninja@mscloudninja.com
+AppName                : Microsoft Graph Command Line Tools
+ContextScope           : CurrentUser
+Certificate            :
+PSHostVersion          : 2025.0.0
+ManagedIdentityId      :
+ClientSecret           :                                                                                        Environment            : Global                                                                                                                                                                                                 [2025-06-25 02:03:23] [INFO] Disconnected from Microsoft Graph.                                                 [2025-06-25 02:03:23] [SUCCESS] Entra ID deployment completed                                                   [2025-06-25 02:03:23] [INFO] === Deploying Microsoft Purview Baseline ===                                       [2025-06-25 02:03:23] [INFO] Starting Microsoft Purview baseline deployment...                                  [2025-06-25 02:03:23] [INFO] Checking prerequisites...                                                          [2025-06-25 02:03:23] [WARNING] PnP.PowerShell module not found. Installing...                                  PackageManagement\Install-Package : Package 'PnP.PowerShell' failed to be installed because: End of Central     Directory record could not be found.                                                                            At C:\Users\ofirga\OneDrive - Essence                                                                           Security\מסמכים\WindowsPowerShell\Modules\PowerShellGet\2.2.5\PSModule.psm1:9711 char:34                        + ... talledPackages = PackageManagement\Install-Package @PSBoundParameters                                     +                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                     
+    + CategoryInfo          : InvalidResult: (PnP.PowerShell:String) [Install-Package], Exception
+    + FullyQualifiedErrorId : Package '{0}' failed to be installed because: {1},Microsoft.PowerShell.PackageMa  
+   nagement.Cmdlets.InstallPackage
+
+[2025-06-25 02:03:43] [INFO] Prerequisites check completed.
+[2025-06-25 02:03:43] [INFO] Connecting to compliance services...
+Error Acquiring Token:
+The type initializer for 'Microsoft.Identity.Client.NativeInterop.API' threw an exception. See https://aka.ms/msal-net-wam#troubleshooting
+[2025-06-25 02:03:43] [ERROR] Failed to connect to compliance services: The type initializer for 'Microsoft.Identity.Client.NativeInterop.API' threw an exception. See https://aka.ms/msal-net-wam#troubleshooting
+[2025-06-25 02:03:43] [ERROR] Script execution failed: The type initializer for 'Microsoft.Identity.Client.NativeInterop.API' threw an exception. See https://aka.ms/msal-net-wam#troubleshooting
+[2025-06-25 02:03:43] [INFO] Disconnecting from compliance services...
+Disconnect-MgGraph : No application to sign out from.
+At C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\Deploy-PurviewBaseline.ps1:275 char:9
++         Disconnect-MgGraph
++         ~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : CloseError: (:) [Disconnect-MgGraph], ArgumentException                               + FullyQualifiedErrorId : Microsoft.Graph.PowerShell.Authentication.Cmdlets.DisconnectMgGraph                                                                                                                               [2025-06-25 02:03:43] [INFO] Disconnected from compliance services.                                             [2025-06-25 02:03:43] [SUCCESS] Microsoft Purview deployment completed                                          [2025-06-25 02:03:43] [INFO] === Deploying Defender for Business Baseline ===                                   [2025-06-25 02:03:44] [INFO] Starting Defender for Business baseline deployment...                              [2025-06-25 02:03:44] [INFO] Checking prerequisites...                                                          [2025-06-25 02:03:44] [WARNING] Microsoft.Graph.Intune module not found. Installing...                          PackageManagement\Install-Package : Package 'Microsoft.Graph.Intune' failed to be installed because: End of     Central Directory record could not be found.                                                                    At C:\Users\ofirga\OneDrive - Essence                                                                           Security\מסמכים\WindowsPowerShell\Modules\PowerShellGet\2.2.5\PSModule.psm1:9711 char:34                        + ... talledPackages = PackageManagement\Install-Package @PSBoundParameters                                     +                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                     
+    + CategoryInfo          : InvalidResult: (Microsoft.Graph.Intune:String) [Install-Package], Exception       
+    + FullyQualifiedErrorId : Package '{0}' failed to be installed because: {1},Microsoft.PowerShell.PackageMa  
+   nagement.Cmdlets.InstallPackage
+
+[2025-06-25 02:03:51] [INFO] Prerequisites check completed.
+[2025-06-25 02:03:51] [INFO] Connecting to Microsoft Graph and Intune...
+[2025-06-25 02:05:27] [ERROR] Failed to connect to services: InteractiveBrowserCredential authentication failed: User canceled authentication.
+[2025-06-25 02:05:27] [ERROR] Script execution failed: InteractiveBrowserCredential authentication failed: User canceled authentication.
+[2025-06-25 02:05:27] [INFO] Disconnecting from services...
+Disconnect-MgGraph : No application to sign out from.
+At C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\Deploy-DefenderBusinessBaseline.ps1:308 char:9       
++         Disconnect-MgGraph
++         ~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : CloseError: (:) [Disconnect-MgGraph], ArgumentException
+    + FullyQualifiedErrorId : Microsoft.Graph.PowerShell.Authentication.Cmdlets.DisconnectMgGraph
+
+[2025-06-25 02:05:28] [INFO] Disconnected from services.
+[2025-06-25 02:05:28] [SUCCESS] Defender for Business deployment completed
+[2025-06-25 02:05:28] [INFO] === Deploying Conditional Access Baseline ===
+[2025-06-25 02:05:34] [ERROR] Error deploying Conditional Access baseline: A parameter with the name 'WhatIf' was defined multiple times for the command.
+[2025-06-25 02:05:34] [ERROR] Deployment failed: A parameter with the name 'WhatIf' was defined multiple times for the command.
+[2025-06-25 02:05:34] [ERROR] Check the log file for detailed error information: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-20250625-020206.log
+
+
+PS C:\Users\ofirga\source\repos\M365BPAutoBaseLine> Connect-AzureAD  
+Connect-AzureAD : The term 'Connect-AzureAD' is not recognized as the name of a cmdlet, function, script file, 
+or operable program. Check the spelling of the name, or if a path was included, verify that the path is
+correct and try again.
+At line:1 char:1
++ Connect-AzureAD
++ ~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (Connect-AzureAD:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\Users\ofirga\source\repos\M365BPAutoBaseLine> Connect-MgGraph
+Connect-MgGraph : InteractiveBrowserCredential authentication failed: User canceled authentication. 
+At line:1 char:1
++ Connect-MgGraph
++ ~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Connect-MgGraph], AuthenticationFailedException
+    + FullyQualifiedErrorId : Microsoft.Graph.PowerShell.Authentication.Cmdlets.ConnectMgGraph
