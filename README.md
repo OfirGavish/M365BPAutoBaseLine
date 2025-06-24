@@ -27,7 +27,7 @@ This repository contains automated PowerShell scripts to deploy security baselin
 - Alert policies for high-risk activities
 - Unified audit log enablement
 
-### 4. Defender for Business (Endpoint)
+### 4. Defender for Business (Endpoint+XDR)
 - Tamper Protection enablement
 - Attack Surface Reduction (ASR) rules
 - Automated investigation and remediation
