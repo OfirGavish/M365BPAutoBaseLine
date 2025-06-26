@@ -43,19 +43,34 @@
 ### 3. ✅ MDEAutomator Integration
 **Repository**: https://github.com/msdirtbag/MDEAutomator  
 **Author**: @msdirtbag  
+**License**: MIT License  
 
 **Integration Features**:
-- Advanced Defender for Endpoint automation and orchestration
-- Live Response script library for incident response
-- Custom detection rules deployment
-- Threat intelligence indicator management
-- Investigation automation and forensic data collection
-- Azure Function-based serverless architecture
+- **Complete Module Integration**: Real MDEAutomator PowerShell module with robust import/install logic
+- **Authentication Management**: Support for both App Registration client secrets and managed identity flows
+- **Live Response Scripts**: 4 pre-built scripts for incident response, investigation, and forensics
+- **Custom Detection Rules**: Advanced threat detection with KQL queries and automated deployment
+- **Threat Intelligence Management**: IOC deployment for files (SHA1/SHA256), IPs, domains/URLs, and certificates
+- **Environment Testing**: Comprehensive MDE readiness assessment and capability validation
+- **Advanced Hunting**: Query automation and scheduled hunting capabilities
+- **Investigation Package Collection**: Automated forensic data gathering
+- **Bulk Device Operations**: Mass isolation, scanning, and remediation actions
+- **Safety & Reliability**: What-If mode, robust error handling, and admin lockout prevention
+
+**Real MDEAutomator Cmdlets Used**:
+- `Connect-MDE` - Authentication and token management
+- `Get-Machines`, `Get-Actions`, `Get-Indicators` - Inventory and status
+- `Invoke-UploadLR`, `Invoke-LRScript`, `Get-LiveResponseOutput` - Live Response
+- `Install-DetectionRule`, `Get-DetectionRules` - Custom detections  
+- `Invoke-TiFile`, `Invoke-TiIP`, `Invoke-TiURL`, `Invoke-TiCert` - Threat intelligence
+- `Invoke-AdvancedHunting` - Advanced queries
+- `Invoke-CollectInvestigationPackage` - Forensics
 
 **Files Created/Updated**:
-- `Scripts/Deploy-DefenderBusinessBaseline-Enhanced.ps1` - MDEAutomator integration
-- Comprehensive documentation of advanced endpoint capabilities
-- Architecture diagrams and deployment guidance
+- `Scripts/Deploy-DefenderBusinessBaseline-Enhanced.ps1` - Complete MDEAutomator integration
+- Enhanced prerequisite checking and module management
+- Comprehensive logging, error handling, and safety features
+- Full integration documentation and usage examples
 
 ## Project Architecture Overview
 

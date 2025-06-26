@@ -17,7 +17,10 @@ The following changes have been made to prevent admin lockouts and improve deplo
 ### 1. Report-Only Mode for Admin Policies
 
 - **M365BP-Admin-Require-Compliant-Device** policy now deploys in **report-only mode** by default
-- This prevents immediate lockout of admin accounts that don't have compliant devices
+- **ALL Entra ID Conditional Access policies** now deploy in **report-only mode** for safety:
+  - M365BP-Require-MFA-All-Users (report-only)
+  - M365BP-Block-Legacy-Authentication (report-only)  
+  - M365BP-Admin-Require-Compliant-Device (report-only)
 - All Conditional Access policies from the ConditionalAccess component start in report-only mode
 
 ### 2. Fixed Parameter Duplication Error
@@ -56,6 +59,13 @@ The main deployment script now uses the enhanced version which includes:
 - **Removed**: Original `Deploy-DefenderBusinessBaseline.ps1` (basic version)
 - **Using**: `Deploy-DefenderBusinessBaseline-Enhanced.ps1` (with MDEAutomator integration)
 - **Main Script Updated**: Now calls the enhanced version with advanced features by default
+
+### Conditional Access Policy Duplication Prevention
+
+- **Smart Component Detection**: EntraID baseline now detects when ConditionalAccess component is also being deployed
+- **Automatic Skip Logic**: When both components are selected, EntraID skips its basic CA policies
+- **No Conflicts**: Prevents duplicate policies with different configurations
+- **Parameter Control**: `SkipConditionalAccessPolicies` parameter for manual control
 
 ### 4. New Safety Script
 

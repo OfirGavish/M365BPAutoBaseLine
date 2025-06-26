@@ -16,13 +16,17 @@
 .PARAMETER AdminConsentReviewers
     Array of admin email addresses to review consent requests
 
+.PARAMETER SkipConditionalAccessPolicies
+    Skip creating Conditional Access policies (useful when deploying ConditionalAccess component separately)
+
 .EXAMPLE
     .\Deploy-EntraIDBaseline.ps1 -AdminConsentReviewers @("admin@domain.com")
 #>
 
 param(
     [switch]$EnableSecurityDefaults = $false,
-    [string[]]$AdminConsentReviewers = @()
+    [string[]]$AdminConsentReviewers = @(),
+    [switch]$SkipConditionalAccessPolicies = $false
 )
 
 # Function to log messages
@@ -83,10 +87,10 @@ function Enable-SecurityDefaults {
 function New-ConditionalAccessPolicies {
     Write-Log "Creating Conditional Access policies..."
     try {
-        # Policy 1: Require MFA for all users
+        # Policy 1: Require MFA for all users (start in report-only mode for safety)
         $mfaPolicy = @{
             displayName = "M365BP-Require-MFA-All-Users"
-            state = "enabled"
+            state = "enabledForReportingButNotEnforced"  # Start in report-only mode for safety
             conditions = @{
                 users = @{
                     includeUsers = @("All")
@@ -108,15 +112,15 @@ function New-ConditionalAccessPolicies {
         $existingPolicy = Get-MgIdentityConditionalAccessPolicy -Filter "displayName eq 'M365BP-Require-MFA-All-Users'" -ErrorAction SilentlyContinue
         if (!$existingPolicy) {
             New-MgIdentityConditionalAccessPolicy -BodyParameter $mfaPolicy
-            Write-Log "Created MFA policy for all users."
+            Write-Log "Created MFA policy for all users in REPORT-ONLY mode."
         } else {
             Write-Log "MFA policy already exists."
         }
         
-        # Policy 2: Block legacy authentication
+        # Policy 2: Block legacy authentication (start in report-only mode for safety)
         $legacyAuthPolicy = @{
             displayName = "M365BP-Block-Legacy-Authentication"
-            state = "enabled"
+            state = "enabledForReportingButNotEnforced"  # Start in report-only mode for safety
             conditions = @{
                 users = @{
                     includeUsers = @("All")
@@ -135,7 +139,7 @@ function New-ConditionalAccessPolicies {
         $existingLegacyPolicy = Get-MgIdentityConditionalAccessPolicy -Filter "displayName eq 'M365BP-Block-Legacy-Authentication'" -ErrorAction SilentlyContinue
         if (!$existingLegacyPolicy) {
             New-MgIdentityConditionalAccessPolicy -BodyParameter $legacyAuthPolicy
-            Write-Log "Created legacy authentication blocking policy."
+            Write-Log "Created legacy authentication blocking policy in REPORT-ONLY mode."
         } else {
             Write-Log "Legacy authentication blocking policy already exists."
         }
@@ -170,6 +174,10 @@ function New-ConditionalAccessPolicies {
         } else {
             Write-Log "Admin device compliance policy already exists."
         }
+        
+        # Add warning about all policies being in report-only mode
+        Write-Log "IMPORTANT: All Conditional Access policies were created in REPORT-ONLY mode for safety." -Level "WARNING"
+        Write-Log "Use the Enable-ConditionalAccessPolicies.ps1 script to safely enable them after testing." -Level "WARNING"
     }
     catch {
         Write-Log "Error creating Conditional Access policies: $($_.Exception.Message)" -Level "ERROR"
@@ -292,6 +300,8 @@ try {
     
     if ($EnableSecurityDefaults) {
         Enable-SecurityDefaults
+    } elseif ($SkipConditionalAccessPolicies) {
+        Write-Log "Skipping Conditional Access policies creation (will be handled by ConditionalAccess component)" -Level "WARNING"
     } else {
         New-ConditionalAccessPolicies
     }

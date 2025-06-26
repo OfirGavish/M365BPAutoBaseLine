@@ -216,6 +216,12 @@ function Deploy-EntraID {
                 AdminConsentReviewers = @($AdminEmail)
             }
             
+            # Skip Conditional Access policies if ConditionalAccess component is also being deployed
+            if ($Components -contains "ConditionalAccess") {
+                $params.SkipConditionalAccessPolicies = $true
+                Write-Log "ConditionalAccess component detected - Entra ID will skip basic Conditional Access policies" -Level "INFO"
+            }
+            
             # Add WhatIf parameter if specified
             if ($WhatIf) {
                 $params.Add("WhatIf", $true)
@@ -227,8 +233,12 @@ function Deploy-EntraID {
                 & $scriptPath @params
             }
             Write-Log "Entra ID deployment completed" -Level "SUCCESS"
-            Write-Log "IMPORTANT: The 'M365BP-Admin-Require-Compliant-Device' policy was created in REPORT-ONLY mode to prevent admin lockout." -Level "WARNING"
-            Write-Log "Review the policy reports before enabling it to ensure all admin devices are compliant." -Level "WARNING"
+            
+            # Only show Conditional Access warnings if we actually deployed them
+            if (-not ($Components -contains "ConditionalAccess")) {
+                Write-Log "IMPORTANT: Conditional Access policies were created in REPORT-ONLY mode to prevent lockout." -Level "WARNING"
+                Write-Log "Review the policy reports before enabling them to ensure proper functionality." -Level "WARNING"
+            }
         } else {
             Write-Log "Entra ID script not found: $scriptPath" -Level "ERROR"
         }
