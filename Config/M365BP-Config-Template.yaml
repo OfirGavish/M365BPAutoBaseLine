@@ -71,3 +71,38 @@ ConditionalAccess:
       IPRanges: ["192.0.2.0/24"]
     }
   ]
+
+# Microsoft Intune (OpenIntuneBaseline) settings
+Intune:
+  # Platforms to deploy baselines for
+  Platforms: ["Windows", "Windows365"]  # Options: Windows, Windows365, macOS, BYOD, All
+  
+  # Include additional platforms
+  IncludeMacOS: false
+  IncludeBYOD: false
+  
+  # Baseline configuration
+  BaselineVersion: "Latest"  # Options: Latest, v3.6 (Windows), v1.0 (macOS/Windows365)
+  ImportMethod: "IntuneManagement"  # Options: IntuneManagement, Native
+  
+  # Policy configuration
+  PolicyPrefix: "M365BP-OIB"  # Prefix for policy names
+  TestMode: true  # Deploy in test mode initially
+  
+  # Excluded policy categories (optional)
+  ExcludePolicies: []  # Options: Compliance, Configuration, EndpointSecurity, etc.
+  
+  # Download latest baseline from GitHub
+  DownloadBaseline: true
+  
+  # Assignment groups
+  AssignmentGroups:
+    PilotGroup: "Intune-Pilot-Users"
+    ProductionGroup: "All Users"
+    
+  # Security framework preferences
+  SecurityFrameworks:
+    EnableCISBenchmarks: true
+    EnableNCSCGuidance: true
+    EnableACSCEssentialEight: true
+    EnableMicrosoftBaselines: true

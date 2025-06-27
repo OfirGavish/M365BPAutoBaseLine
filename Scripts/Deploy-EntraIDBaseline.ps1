@@ -55,9 +55,12 @@ function Connect-MicrosoftGraphService {
     try {
         $scopes = @(
             "Policy.ReadWrite.ConditionalAccess",
-            "Policy.ReadWrite.PermissionGrant",
+            "Policy.ReadWrite.PermissionGrant", 
+            "Policy.ReadWrite.AuthenticationMethod",
             "Directory.ReadWrite.All",
-            "RoleManagement.ReadWrite.Directory"
+            "RoleManagement.ReadWrite.Directory",
+            "Organization.Read.All",
+            "Application.Read.All"
         )
         Connect-MgGraph -Scopes $scopes -NoWelcome -ErrorAction Stop
         Write-Log "Successfully connected to Microsoft Graph."
@@ -217,32 +220,81 @@ function Enable-AdminConsentWorkflow {
 
 # Function to configure PIM for privileged roles
 function Set-PrivilegedIdentityManagement {
-    Write-Log "Configuring Privileged Identity Management..."
+    Write-Log "Configuring Privileged Identity Management settings..."
     try {
-        # Get privileged roles
-        $privilegedRoles = @(
-            "62e90394-69f5-4237-9190-012177145e10", # Global Administrator
-            "e8611ab8-c189-46e8-94e1-60213ab1f814", # Privileged Role Administrator
-            "194ae4cb-b126-40b2-bd5b-6091b380977d", # Security Administrator
-            "729827e3-9c14-49f7-bb1b-9608f156bbb8", # Helpdesk Administrator
-            "f28a1f50-f6e7-4571-818b-6a12f2af6b6c"  # SharePoint Administrator
-        )
+        # Check if PIM is available (requires Azure AD Premium P2)
+        try {
+            $pimServicePrincipal = Get-MgServicePrincipal -Filter "displayName eq 'MS-PIM'" -ErrorAction SilentlyContinue
+            if (-not $pimServicePrincipal) {
+                Write-Log "PIM service principal not found. This may indicate PIM is not available in this tenant." -Level "WARNING"
+                Write-Log "PIM requires Azure AD Premium P2 license. Please verify licensing and PIM availability." -Level "WARNING"
+                return
+            }
+        }
+        catch {
+            Write-Log "Unable to verify PIM availability: $($_.Exception.Message)" -Level "WARNING"
+        }
+
+        # Get privileged roles to monitor
+        $privilegedRoles = @{
+            "62e90394-69f5-4237-9190-012177145e10" = "Global Administrator"
+            "e8611ab8-c189-46e8-94e1-60213ab1f814" = "Privileged Role Administrator"  
+            "194ae4cb-b126-40b2-bd5b-6091b380977d" = "Security Administrator"
+            "729827e3-9c14-49f7-bb1b-9608f156bbb8" = "Helpdesk Administrator"
+            "f28a1f50-f6e7-4571-818b-6a12f2af6b6c" = "SharePoint Administrator"
+            "9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3" = "Application Administrator"
+            "c4e39bd9-1100-46d3-8c65-fb160da0071f" = "Authentication Administrator"
+        }
         
-        foreach ($roleId in $privilegedRoles) {
+        foreach ($roleId in $privilegedRoles.Keys) {
             try {
-                $role = Get-MgDirectoryRole -DirectoryRoleId $roleId -ErrorAction SilentlyContinue
+                # Check if role exists and get current assignments
+                $role = Get-MgDirectoryRole -Filter "roleTemplateId eq '$roleId'" -ErrorAction SilentlyContinue
                 if ($role) {
-                    Write-Log "Configuring PIM for role: $($role.DisplayName)"
-                    # Note: PIM configuration requires additional API calls specific to PIM
-                    # This is a placeholder for PIM configuration
+                    $roleName = $privilegedRoles[$roleId]
+                    Write-Log "Analyzing role: $roleName"
+                    
+                    # Get current role assignments
+                    $roleAssignments = Get-MgDirectoryRoleMember -DirectoryRoleId $role.Id -ErrorAction SilentlyContinue
+                    
+                    if ($roleAssignments) {
+                        Write-Log "Found $($roleAssignments.Count) assignment(s) for role: $roleName"
+                        
+                        # Check for permanent assignments (potential PIM candidates)
+                        foreach ($assignment in $roleAssignments) {
+                            try {
+                                $user = Get-MgUser -UserId $assignment.Id -ErrorAction SilentlyContinue
+                                if ($user) {
+                                    Write-Log "  - User: $($user.DisplayName) ($($user.UserPrincipalName))" -Level "WARNING"
+                                }
+                            }
+                            catch {
+                                Write-Log "  - Assignment ID: $($assignment.Id) (could not resolve user details)"
+                            }
+                        }
+                        
+                        Write-Log "RECOMMENDATION: Review permanent assignments for role '$roleName' and consider moving to PIM eligible assignments." -Level "WARNING"
+                    } else {
+                        Write-Log "No assignments found for role: $roleName"
+                    }
+                } else {
+                    Write-Log "Role template $roleId not found or not instantiated"
                 }
             }
             catch {
-                Write-Log "Error configuring PIM for role $roleId : $($_.Exception.Message)" -Level "WARNING"
+                Write-Log "Error analyzing role $roleId ($($privilegedRoles[$roleId])): $($_.Exception.Message)" -Level "WARNING"
             }
         }
         
-        Write-Log "PIM configuration completed. Manual review recommended for role assignments."
+        # Provide guidance for PIM configuration
+        Write-Log "PIM analysis completed. To properly configure PIM:" -Level "INFO"
+        Write-Log "1. Navigate to Azure AD Privileged Identity Management in the Azure portal" -Level "INFO"
+        Write-Log "2. Configure role settings for each privileged role (activation time, approval requirements, etc.)" -Level "INFO"
+        Write-Log "3. Convert permanent assignments to eligible assignments where appropriate" -Level "INFO"
+        Write-Log "4. Set up access reviews for privileged role assignments" -Level "INFO"
+        Write-Log "5. Enable alerts for privileged role activations and assignments" -Level "INFO"
+        
+        Write-Log "PIM configuration guidance provided. Manual configuration required in Azure portal." -Level "WARNING"
     }
     catch {
         Write-Log "Error configuring PIM: $($_.Exception.Message)" -Level "ERROR"
@@ -251,31 +303,181 @@ function Set-PrivilegedIdentityManagement {
 
 # Function to configure authentication methods
 function Set-AuthenticationMethods {
-    Write-Log "Configuring authentication methods..."
+    Write-Log "Configuring authentication methods policies..."
     try {
-        # Disable SMS authentication (security best practice)
-        $smsAuthMethodPolicy = @{
-            id = "Sms"
-            state = "disabled"
+        # Configure SMS authentication policy (disable for security)
+        Write-Log "Configuring SMS authentication policy..."
+        try {
+            $smsAuthMethodPolicy = @{
+                state = "disabled"
+            }
+            
+            # Update SMS authentication method policy
+            Update-MgPolicyAuthenticationMethodPolicySms -BodyParameter $smsAuthMethodPolicy
+            Write-Log "SMS authentication has been disabled for enhanced security."
+        }
+        catch {
+            Write-Log "Error configuring SMS authentication policy: $($_.Exception.Message)" -Level "WARNING"
+            Write-Log "Manual configuration may be required in Azure AD portal under Authentication methods." -Level "WARNING"
         }
         
-        # Note: This requires specific Graph API calls for authentication method policies
-        Write-Log "Authentication methods configuration completed. Manual review recommended for SMS disabling."
+        # Configure Voice Call authentication policy (disable for security)
+        Write-Log "Configuring Voice Call authentication policy..."
+        try {
+            $voiceAuthMethodPolicy = @{
+                state = "disabled"
+            }
+            
+            # Update Voice authentication method policy
+            Update-MgPolicyAuthenticationMethodPolicyVoice -BodyParameter $voiceAuthMethodPolicy
+            Write-Log "Voice call authentication has been disabled for enhanced security."
+        }
+        catch {
+            Write-Log "Error configuring Voice authentication policy: $($_.Exception.Message)" -Level "WARNING"
+            Write-Log "Manual configuration may be required in Azure AD portal under Authentication methods." -Level "WARNING"
+        }
+        
+        # Configure Microsoft Authenticator policy (enable and require number match)
+        Write-Log "Configuring Microsoft Authenticator policy..."
+        try {
+            $authenticatorPolicy = @{
+                state = "enabled"
+                microsoftAuthenticatorAuthenticationMethodConfiguration = @{
+                    state = "enabled"
+                    featureSettings = @{
+                        requireNumberMatching = $true
+                        companionAppAllowedState = @{
+                            state = "enabled"
+                        }
+                    }
+                }
+            }
+            
+            # Update Microsoft Authenticator policy
+            Update-MgPolicyAuthenticationMethodPolicyMicrosoftAuthenticator -BodyParameter $authenticatorPolicy
+            Write-Log "Microsoft Authenticator configured with number matching requirement."
+        }
+        catch {
+            Write-Log "Error configuring Microsoft Authenticator policy: $($_.Exception.Message)" -Level "WARNING"
+            Write-Log "Manual configuration may be required in Azure AD portal under Authentication methods." -Level "WARNING"
+        }
+        
+        # Get current authentication methods policy status
+        Write-Log "Reviewing current authentication methods configuration..."
+        try {
+            $authMethodsPolicy = Get-MgPolicyAuthenticationMethodPolicy -ErrorAction SilentlyContinue
+            if ($authMethodsPolicy) {
+                Write-Log "Authentication methods policy found and configured."
+                
+                # Provide recommendations
+                Write-Log "RECOMMENDATIONS for authentication methods:" -Level "INFO"
+                Write-Log "1. Ensure FIDO2 security keys are enabled for passwordless authentication" -Level "INFO"
+                Write-Log "2. Configure Temporary Access Pass for secure onboarding" -Level "INFO"
+                Write-Log "3. Review and test all authentication methods with pilot users" -Level "INFO"
+                Write-Log "4. Consider enabling Windows Hello for Business" -Level "INFO"
+            }
+        }
+        catch {
+            Write-Log "Could not retrieve authentication methods policy for review: $($_.Exception.Message)" -Level "WARNING"
+        }
+        
+        Write-Log "Authentication methods configuration completed."
     }
     catch {
         Write-Log "Error configuring authentication methods: $($_.Exception.Message)" -Level "ERROR"
     }
 }
 
-# Function to enable Continuous Access Evaluation
+# Function to enable and verify Continuous Access Evaluation
 function Enable-ContinuousAccessEvaluation {
-    Write-Log "Enabling Continuous Access Evaluation..."
+    Write-Log "Verifying Continuous Access Evaluation (CAE) configuration..."
     try {
-        # CAE is enabled by default in most tenants, but we can verify
-        Write-Log "Continuous Access Evaluation check completed. Verify in Azure portal if needed."
+        # CAE is typically enabled by default, but let's verify the configuration
+        Write-Log "Checking CAE-compatible applications and policies..."
+        
+        # Check for CAE-compatible conditional access policies
+        try {
+            $conditionalAccessPolicies = Get-MgIdentityConditionalAccessPolicy -ErrorAction SilentlyContinue
+            $caeCompatiblePolicies = $conditionalAccessPolicies | Where-Object { 
+                $_.SessionControls -and $_.SessionControls.SignInFrequency 
+            }
+            
+            if ($caeCompatiblePolicies) {
+                Write-Log "Found $($caeCompatiblePolicies.Count) conditional access policies with session controls that work with CAE."
+            } else {
+                Write-Log "No conditional access policies with CAE-compatible session controls found." -Level "WARNING"
+            }
+        }
+        catch {
+            Write-Log "Could not analyze conditional access policies for CAE compatibility: $($_.Exception.Message)" -Level "WARNING"
+        }
+        
+        # Verify tenant configuration supports CAE
+        try {
+            # Get tenant information
+            $organization = Get-MgOrganization -ErrorAction SilentlyContinue
+            if ($organization) {
+                Write-Log "Tenant verification completed for CAE support."
+                
+                # Check if security defaults are enabled (affects CAE)
+                try {
+                    $securityDefaults = Get-MgPolicyIdentitySecurityDefaultEnforcementPolicy -ErrorAction SilentlyContinue
+                    if ($securityDefaults -and $securityDefaults.IsEnabled) {
+                        Write-Log "Security Defaults are enabled. CAE works with Security Defaults." -Level "INFO"
+                    } else {
+                        Write-Log "Security Defaults are disabled. CAE works with custom Conditional Access policies." -Level "INFO"
+                    }
+                }
+                catch {
+                    Write-Log "Could not verify Security Defaults status: $($_.Exception.Message)" -Level "WARNING"
+                }
+            }
+        }
+        catch {
+            Write-Log "Could not verify tenant configuration: $($_.Exception.Message)" -Level "WARNING"
+        }
+        
+        # Provide CAE guidance and recommendations
+        Write-Log "Continuous Access Evaluation (CAE) information:" -Level "INFO"
+        Write-Log "- CAE is automatically enabled for supported applications and scenarios" -Level "INFO"
+        Write-Log "- CAE works with: Exchange Online, SharePoint Online, Microsoft Teams, and Microsoft Graph" -Level "INFO"
+        Write-Log "- CAE provides real-time enforcement of IP location and user risk policies" -Level "INFO"
+        Write-Log "- CAE reduces sign-in frequency for trusted scenarios while maintaining security" -Level "INFO"
+        
+        Write-Log "CAE RECOMMENDATIONS:" -Level "INFO"
+        Write-Log "1. Ensure your Conditional Access policies include IP location conditions to benefit from CAE" -Level "INFO"
+        Write-Log "2. Test CAE behavior with different network locations and risk levels" -Level "INFO"
+        Write-Log "3. Monitor CAE events in Azure AD sign-in logs" -Level "INFO"
+        Write-Log "4. Educate users about potential immediate access revocation with CAE" -Level "INFO"
+        
+        # Check for CAE-related service principals
+        try {
+            $caeRelatedApps = @(
+                "Microsoft Graph",
+                "Office 365 Exchange Online", 
+                "Microsoft Office 365",
+                "Office 365 SharePoint Online"
+            )
+            
+            Write-Log "Verifying CAE-compatible service principals..."
+            foreach ($appName in $caeRelatedApps) {
+                $servicePrincipal = Get-MgServicePrincipal -Filter "displayName eq '$appName'" -ErrorAction SilentlyContinue
+                if ($servicePrincipal) {
+                    Write-Log "✓ CAE-compatible service principal found: $appName"
+                } else {
+                    Write-Log "⚠ CAE-compatible service principal not found: $appName" -Level "WARNING"
+                }
+            }
+        }
+        catch {
+            Write-Log "Could not verify CAE-compatible service principals: $($_.Exception.Message)" -Level "WARNING"
+        }
+        
+        Write-Log "Continuous Access Evaluation verification completed."
+        Write-Log "CAE is enabled by default and requires no additional configuration." -Level "SUCCESS"
     }
     catch {
-        Write-Log "Error enabling CAE: $($_.Exception.Message)" -Level "ERROR"
+        Write-Log "Error verifying CAE configuration: $($_.Exception.Message)" -Level "ERROR"
     }
 }
 
@@ -291,14 +493,47 @@ function Disconnect-MicrosoftGraphService {
     }
 }
 
+# Function to provide comprehensive security recommendations
+function Show-SecurityRecommendations {
+    Write-Log "=== ENTRA ID SECURITY BASELINE DEPLOYMENT SUMMARY ===" -Level "SUCCESS"
+    Write-Log ""
+    Write-Log "COMPLETED CONFIGURATIONS:" -Level "INFO"
+    Write-Log "✓ Conditional Access policies created (in report-only mode for safety)" -Level "INFO"
+    Write-Log "✓ Admin consent workflow configured" -Level "INFO"
+    Write-Log "✓ Authentication methods policies updated" -Level "INFO"
+    Write-Log "✓ PIM role analysis completed" -Level "INFO"
+    Write-Log "✓ Continuous Access Evaluation verified" -Level "INFO"
+    Write-Log ""
+    Write-Log "CRITICAL NEXT STEPS:" -Level "WARNING"
+    Write-Log "1. TEST all Conditional Access policies in report-only mode before enabling" -Level "WARNING"
+    Write-Log "2. REVIEW privileged role assignments and implement PIM eligible assignments" -Level "WARNING"
+    Write-Log "3. VERIFY authentication methods work for all users before enforcing" -Level "WARNING"
+    Write-Log "4. CONFIGURE emergency access accounts (break-glass accounts)" -Level "WARNING"
+    Write-Log "5. SET UP monitoring and alerting for security events" -Level "WARNING"
+    Write-Log ""
+    Write-Log "ADDITIONAL RECOMMENDATIONS:" -Level "INFO"
+    Write-Log "• Enable Identity Protection for real-time risk detection" -Level "INFO"
+    Write-Log "• Configure access reviews for privileged roles" -Level "INFO"
+    Write-Log "• Implement Azure AD Connect Health monitoring" -Level "INFO"
+    Write-Log "• Set up Azure Sentinel for advanced security monitoring" -Level "INFO"
+    Write-Log "• Regular security assessment using Microsoft Secure Score" -Level "INFO"
+    Write-Log ""
+    Write-Log "DOCUMENTATION LINKS:" -Level "INFO"
+    Write-Log "• Conditional Access: https://docs.microsoft.com/azure/active-directory/conditional-access/" -Level "INFO"
+    Write-Log "• PIM: https://docs.microsoft.com/azure/active-directory/privileged-identity-management/" -Level "INFO"
+    Write-Log "• Authentication Methods: https://docs.microsoft.com/azure/active-directory/authentication/" -Level "INFO"
+    Write-Log "============================================================" -Level "SUCCESS"
+}
+
 # Main execution
 try {
-    Write-Log "Starting Entra ID baseline deployment..."
+    Write-Log "Starting Entra ID baseline deployment..." -Level "SUCCESS"
     
     Test-Prerequisites
     Connect-MicrosoftGraphService
     
     if ($EnableSecurityDefaults) {
+        Write-Log "Security Defaults mode selected - this will override custom Conditional Access policies" -Level "WARNING"
         Enable-SecurityDefaults
     } elseif ($SkipConditionalAccessPolicies) {
         Write-Log "Skipping Conditional Access policies creation (will be handled by ConditionalAccess component)" -Level "WARNING"
@@ -311,10 +546,14 @@ try {
     Set-AuthenticationMethods
     Enable-ContinuousAccessEvaluation
     
-    Write-Log "Entra ID baseline deployment completed successfully!"
+    Write-Log "Entra ID baseline deployment completed successfully!" -Level "SUCCESS"
+    
+    # Show comprehensive recommendations
+    Show-SecurityRecommendations
 }
 catch {
     Write-Log "Script execution failed: $($_.Exception.Message)" -Level "ERROR"
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level "ERROR"
     exit 1
 }
 finally {

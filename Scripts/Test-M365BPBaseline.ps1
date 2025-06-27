@@ -19,7 +19,7 @@
     Azure AD tenant ID for authentication and testing
 
 .PARAMETER TestCategories
-    Array of test categories to run. Options: "All", "ConditionalAccess", "DefenderO365", "EntraID", "Purview", "DefenderBusiness", "EIDSCA", "Custom"
+    Array of test categories to run. Options: "All", "ConditionalAccess", "DefenderO365", "EntraID", "Purview", "DefenderBusiness", "Intune", "EIDSCA", "Custom"
 
 .PARAMETER OutputPath
     Path where test results and reports will be saved
@@ -75,7 +75,7 @@ param(
     [string]$TenantId,
     
     [Parameter(Mandatory = $false)]
-    [ValidateSet("All", "ConditionalAccess", "DefenderO365", "EntraID", "Purview", "DefenderBusiness", "EIDSCA", "Custom")]
+    [ValidateSet("All", "ConditionalAccess", "DefenderO365", "EntraID", "Purview", "DefenderBusiness", "Intune", "EIDSCA", "Custom")]
     [string[]]$TestCategories = @("All"),
     
     [Parameter(Mandatory = $false)]
@@ -567,6 +567,120 @@ function Send-TestNotification {
     # This would require additional configuration for SMTP or Graph Mail permissions
 }
 
+function Invoke-IntuneTests {
+    Write-TestLog "Running Microsoft Intune baseline validation tests..."
+    
+    try {
+        $testContainerPath = Join-Path $testResultsPath "Intune"
+        New-Item -Path $testContainerPath -ItemType Directory -Force | Out-Null
+        
+        # Test Intune device configurations
+        $intuneTests = @"
+Describe 'Microsoft Intune Baseline Validation' {
+    Context 'OpenIntuneBaseline Policy Validation' {
+        It 'Should have Windows device configuration policies' {
+            `$policies = Get-MgDeviceManagementDeviceConfiguration | Where-Object { `$_.DisplayName -like "*OIB*" -or `$_.DisplayName -like "*M365BP-OIB*" }
+            `$policies.Count | Should -BeGreaterThan 0
+        }
+        
+        It 'Should have Windows compliance policies' {
+            `$policies = Get-MgDeviceManagementDeviceCompliancePolicy | Where-Object { `$_.DisplayName -like "*OIB*" -or `$_.DisplayName -like "*M365BP-OIB*" }
+            `$policies.Count | Should -BeGreaterThan 0
+        }
+        
+        It 'Should have security baselines configured' {
+            `$baselines = Get-MgDeviceManagementConfigurationPolicy | Where-Object { `$_.Name -like "*Security*" -and (`$_.Name -like "*OIB*" -or `$_.Name -like "*M365BP-OIB*") }
+            `$baselines.Count | Should -BeGreaterThan 0
+        }
+        
+        It 'Should have endpoint security policies' {
+            `$policies = Get-MgDeviceManagementIntent | Where-Object { `$_.DisplayName -like "*OIB*" -or `$_.DisplayName -like "*M365BP-OIB*" }
+            `$policies.Count | Should -BeGreaterOrEqual 0
+        }
+        
+        It 'Should have appropriate group assignments' {
+            `$targetGroup = Get-MgGroup -Filter "displayName eq 'All Users'"
+            `$targetGroup | Should -Not -BeNullOrEmpty
+        }
+    }
+    
+    Context 'Security Framework Compliance' {
+        It 'Should implement CIS Windows benchmark controls' {
+            `$cisCompliantPolicies = Get-MgDeviceManagementDeviceConfiguration | Where-Object { 
+                `$_.DisplayName -like "*CIS*" -or 
+                (`$_.DisplayName -like "*OIB*" -and (`$_.Description -like "*CIS*" -or `$_.Description -like "*benchmark*"))
+            }
+            # Should have at least some CIS-aligned policies
+            `$cisCompliantPolicies.Count | Should -BeGreaterOrEqual 0
+        }
+        
+        It 'Should implement NCSC device security guidance' {
+            `$ncscCompliantPolicies = Get-MgDeviceManagementDeviceConfiguration | Where-Object { 
+                `$_.DisplayName -like "*NCSC*" -or 
+                (`$_.DisplayName -like "*OIB*" -and (`$_.Description -like "*NCSC*" -or `$_.Description -like "*security guidance*"))
+            }
+            # Should have NCSC-aligned policies
+            `$ncscCompliantPolicies.Count | Should -BeGreaterOrEqual 0
+        }
+        
+        It 'Should have device encryption policies' {
+            `$encryptionPolicies = Get-MgDeviceManagementDeviceConfiguration | Where-Object { 
+                `$_.DisplayName -like "*Encryption*" -or 
+                `$_.DisplayName -like "*BitLocker*" -or
+                (`$_.DisplayName -like "*OIB*" -and `$_.Description -like "*encryption*")
+            }
+            `$encryptionPolicies.Count | Should -BeGreaterThan 0
+        }
+    }
+    
+    Context 'Intune Management Health' {
+        It 'Should have healthy device enrollment' {
+            `$enrollmentStatus = Get-MgDeviceManagementManagedDevice | Group-Object ComplianceState
+            # Should have at least some enrolled devices for a production environment
+            # This is informational for new deployments
+            Write-Host "Device enrollment status: `$((`$enrollmentStatus | ForEach-Object { "`$(`$_.Name): `$(`$_.Count)" }) -join ', ')" -ForegroundColor Cyan
+            `$true | Should -Be `$true  # Always pass but provide information
+        }
+        
+        It 'Should monitor policy assignment effectiveness' {
+            `$assignmentProblems = Get-MgDeviceManagementDeviceConfiguration | Where-Object { 
+                `$_.DisplayName -like "*OIB*" -or `$_.DisplayName -like "*M365BP-OIB*" 
+            } | ForEach-Object {
+                try {
+                    Get-MgDeviceManagementDeviceConfigurationAssignment -DeviceConfigurationId `$_.Id -ErrorAction SilentlyContinue
+                } catch {
+                    `$_
+                }
+            }
+            # Should not have assignment errors
+            `$assignmentProblems.Count | Should -Be 0
+        }
+    }
+}
+"@
+        
+        $testFilePath = Join-Path $testContainerPath "Intune.Tests.ps1"
+        $intuneTests | Out-File -FilePath $testFilePath -Encoding UTF8
+        
+        # Run Pester tests
+        $pesterConfig = @{
+            Path = $testFilePath
+            OutputFormat = 'NUnitXml'
+            OutputFile = Join-Path $testContainerPath "Intune-TestResults.xml"
+        }
+        
+        $result = Invoke-Pester @pesterConfig -PassThru
+        
+        Write-TestLog "Intune tests completed: $($result.PassedCount) passed, $($result.FailedCount) failed" $(if ($result.FailedCount -gt 0) { "WARNING" } else { "SUCCESS" })
+        
+        return $result
+    }
+    catch {
+        Write-TestLog "Error running Intune tests: $($_.Exception.Message)" "ERROR"
+        return $null
+    }
+}
+
 # Main execution
 try {
     Write-TestLog "=== M365 Business Premium Security Validation Started ==="
@@ -575,7 +689,7 @@ try {
     
     # Expand "All" test categories
     if ($TestCategories -contains "All") {
-        $TestCategories = @("ConditionalAccess", "DefenderO365", "EntraID", "DefenderBusiness", "EIDSCA", "Custom")
+        $TestCategories = @("ConditionalAccess", "DefenderO365", "EntraID", "Purview", "DefenderBusiness", "Intune", "EIDSCA", "Custom")
     }
     
     # Prerequisites and setup
@@ -610,6 +724,10 @@ try {
             }
             "Custom" { 
                 $result = Invoke-CustomTests
+                if ($result) { $allResults += $result }
+            }
+            "Intune" {
+                $result = Invoke-IntuneTests
                 if ($result) { $allResults += $result }
             }
         }

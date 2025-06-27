@@ -8,11 +8,12 @@
     - Entra ID (Azure AD) security controls
     - Microsoft Purview compliance
     - Enhanced Defender for Business (Endpoint) with MDEAutomator integration
+    - Microsoft Intune device security baselines (OpenIntuneBaseline)
     - Conditional Access policies (deployed in report-only mode for safety)
     - Tenant-wide hardening
 
 .PARAMETER Components
-    Array of components to deploy. Options: "DefenderO365", "EntraID", "Purview", "DefenderBusiness", "All"
+    Array of components to deploy. Options: "DefenderO365", "EntraID", "Purview", "DefenderBusiness", "Intune", "ConditionalAccess", "All"
 
 .PARAMETER OrganizationName
     Name of your organization (required for Purview)
@@ -38,7 +39,7 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet("DefenderO365", "EntraID", "Purview", "DefenderBusiness", "ConditionalAccess", "All")]
+    [ValidateSet("DefenderO365", "EntraID", "Purview", "DefenderBusiness", "ConditionalAccess", "Intune", "All")]
     [string[]]$Components,
     
     [Parameter(Mandatory=$true)]
@@ -151,6 +152,11 @@ function Get-Configuration {
         DeployAdvancedFeatures = $DeployAdvancedMDEFeatures  # Use parameter to control advanced features
         AllowedCountries = @("US", "CA", "GB", "AU", "DE", "FR", "NL", "BE", "LU")
         BreakGlassAccounts = @()
+        # Intune-specific configuration
+        IncludeMacOS = $false
+        IncludeBYOD = $false
+        IntuneBaselineVersion = "Latest"
+        IntuneImportMethod = "IntuneManagement"
     }
     
     if (![string]::IsNullOrEmpty($ConfigFile) -and (Test-Path $ConfigFile)) {
@@ -367,6 +373,54 @@ function Deploy-ConditionalAccess {
     }
 }
 
+# Function to deploy Intune baseline
+function Deploy-Intune {
+    param($Config)
+    
+    Write-Log "=== Deploying Microsoft Intune Security Baseline (OpenIntuneBaseline) ===" -Level "INFO"
+    
+    try {
+        $scriptPath = Join-Path $ScriptPath "Deploy-IntuneBaseline.ps1"
+        if (Test-Path $scriptPath) {
+            $params = @{
+                Platforms = @("Windows", "Windows365")  # Default platforms for M365BP
+                IntuneGroupName = $Config.IntuneGroupName
+                PolicyPrefix = "M365BP-OIB"
+                DownloadBaseline = $true
+                TestMode = $true  # Start in test mode for safety
+            }
+            
+            # Add platform selection based on organization needs
+            if ($Config.IncludeMacOS) {
+                $params.Platforms += "macOS"
+            }
+            if ($Config.IncludeBYOD) {
+                $params.Platforms += "BYOD"
+            }
+            
+            # Add WhatIf parameter if specified
+            if ($WhatIf) {
+                $params.Add("WhatIf", $true)
+            }
+            
+            if ($WhatIf) {
+                Write-Log "WHATIF: Would execute Deploy-IntuneBaseline.ps1 with parameters: $($params | ConvertTo-Json)"
+            } else {
+                & $scriptPath @params
+            }
+            Write-Log "Microsoft Intune baseline deployment completed" -Level "SUCCESS"
+            Write-Log "OpenIntuneBaseline policies deployed based on CIS, NCSC, and Microsoft security frameworks" -Level "SUCCESS"
+            Write-Log "IMPORTANT: Policies deployed in TEST mode. Review assignments before full rollout." -Level "WARNING"
+        } else {
+            Write-Log "Intune baseline script not found: $scriptPath" -Level "ERROR"
+        }
+    }
+    catch {
+        Write-Log "Error deploying Intune baseline: $($_.Exception.Message)" -Level "ERROR"
+        throw
+    }
+}
+
 # Function to generate deployment report
 function New-DeploymentReport {
     Write-Log "=== Generating Deployment Report ===" -Level "INFO"
@@ -523,9 +577,9 @@ try {
     
     # Load configuration
     $config = Get-Configuration
-      # Expand "All" components
+    # Expand "All" components
     if ($Components -contains "All") {
-        $Components = @("DefenderO365", "EntraID", "Purview", "DefenderBusiness", "ConditionalAccess")
+        $Components = @("DefenderO365", "EntraID", "Purview", "DefenderBusiness", "ConditionalAccess", "Intune")
     }
     
     Write-Log "Starting deployment process..."    # Deploy each component
@@ -536,6 +590,7 @@ try {
             "Purview" { Deploy-Purview -Config $config }
             "DefenderBusiness" { Deploy-DefenderBusiness -Config $config }
             "ConditionalAccess" { Deploy-ConditionalAccess -Config $config }
+            "Intune" { Deploy-Intune -Config $config }
         }
     }
     

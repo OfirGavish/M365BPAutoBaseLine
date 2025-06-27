@@ -34,6 +34,15 @@ This repository contains automated PowerShell scripts to deploy security baselin
 - Device compliance policies
 - Endpoint security configurations
 
+### 5. Microsoft Intune Security Baselines (OpenIntuneBaseline)
+- Comprehensive device security configurations for Windows, Windows 365, macOS, and BYOD
+- CIS Windows Benchmarks implementation
+- NCSC Device Security Guidance compliance
+- ACSC Essential Eight mitigation strategies
+- Microsoft Security Baselines integration
+- Real-world tested enterprise configurations
+- Community-driven security policies
+
 ## Prerequisites
 
 ### Required PowerShell Modules
@@ -42,6 +51,7 @@ Install-Module -Name ExchangeOnlineManagement -Force
 Install-Module -Name Microsoft.Graph -Force
 Install-Module -Name Microsoft.Graph.Intune -Force
 Install-Module -Name PnP.PowerShell -Force
+Install-Module -Name IntuneManagement -Force  # For OpenIntuneBaseline deployment
 ```
 
 ### Required Permissions
@@ -70,7 +80,7 @@ cd M365BPAutoBaseLine
 ### 3. Deploy Specific Components
 ```powershell
 .\Scripts\Deploy-M365BPBaseline.ps1 `
-    -Components @("DefenderO365", "EntraID") `
+    -Components @("DefenderO365", "EntraID", "Intune") `
     -OrganizationName "YourCompany" `
     -AdminEmail "admin@yourcompany.com"
 ```
@@ -104,6 +114,96 @@ cd M365BPAutoBaseLine
     -TenantId "your-tenant-id" `
     -IntuneGroupName "All Users"
 ```
+
+### Microsoft Intune (OpenIntuneBaseline)
+```powershell
+.\Scripts\Deploy-IntuneBaseline.ps1 `
+    -Platforms @("Windows", "Windows365") `
+    -IntuneGroupName "Pilot Users" `
+    -DownloadBaseline
+```
+
+```powershell
+# Deploy for all supported platforms including macOS and BYOD
+.\Scripts\Deploy-IntuneBaseline.ps1 `
+    -Platforms @("All") `
+    -IntuneGroupName "All Users" `
+    -TestMode `
+    -DownloadBaseline
+```
+
+## Microsoft Intune Security Baselines (OpenIntuneBaseline Integration)
+
+### About OpenIntuneBaseline
+The **OpenIntuneBaseline (OIB)** project by James (@SkipToTheEndpoint), a Microsoft MVP, provides community-driven, enterprise-grade security baselines for Microsoft Intune. This integration brings industry-leading device security configurations to your M365 Business Premium deployment.
+
+### Security Framework Coverage
+The OpenIntuneBaseline implements multiple security frameworks:
+- **NCSC Device Security Guidance** - UK National Cyber Security Centre recommendations
+- **CIS Windows Benchmarks** - Center for Internet Security hardening guidelines
+- **ACSC Essential Eight** - Australian Cyber Security Centre mitigation strategies
+- **Microsoft Security Baselines** - Official Microsoft security recommendations
+- **Real-world Experience** - Battle-tested configurations from enterprise deployments
+
+### Supported Platforms
+- **Windows 10/11** - Comprehensive device security (v3.6)
+- **Windows 365** - Cloud PC specific configurations (v1.0)
+- **macOS** - Apple device security baselines (v1.0)
+- **BYOD (Bring Your Own Device)** - Personal device management (v1.0)
+
+### Key Security Areas Covered
+- **Device Configuration** - System hardening and security settings
+- **Compliance Policies** - Device health and security requirements  
+- **Endpoint Security** - Advanced threat protection settings
+- **Application Control** - Software installation and execution policies
+- **Data Protection** - Encryption and information protection
+- **Network Security** - Wi-Fi, VPN, and network access controls
+- **User Experience** - Balanced security with productivity
+
+### Deployment Methods
+1. **IntuneManagement Tool** (Recommended)
+   - Imports entire baseline with full policy management
+   - Preserves policy relationships and dependencies
+   - Enables bulk operations and maintenance
+
+2. **Native Intune Import**
+   - Uses built-in Intune import/export functionality
+   - Limited to Settings Catalog policies only
+   - Suitable for environments with restricted tool usage
+
+### Policy Naming Convention
+All imported policies follow the OpenIntuneBaseline naming convention:
+```
+[Platform] - OIB - [Category] - [Type] - [Description] - [Version]
+
+Examples:
+- Win - OIB - Device Security - D - Login and Lock Screen - v3.6
+- Win365 - OIB - Device Security - D - Resource Redirection - v1.0
+- MacOS - OIB - Microsoft Edge - D - Security - v1.0
+```
+
+Where:
+- **Platform**: Win, Win365, MacOS, BYOD
+- **OIB**: OpenIntuneBaseline identifier
+- **Category**: Device Security, Application Control, etc.
+- **Type**: D (Device), U (User)
+- **Description**: Specific functionality area
+- **Version**: Baseline version number
+
+### Safety Features
+- **Test Mode Deployment** - Policies deployed to pilot groups initially
+- **Gradual Rollout** - Controlled expansion from pilot to production
+- **Policy Validation** - Automated testing of policy effectiveness
+- **Compliance Monitoring** - Continuous assessment of device health
+- **Rollback Capability** - Quick policy reversal if issues arise
+
+### Integration Benefits
+- **Accelerated Deployment** - Skip months of policy development
+- **Industry Best Practices** - Leverage community expertise
+- **Regular Updates** - Automatic access to latest security improvements
+- **Comprehensive Coverage** - Address all major security areas
+- **Production-Ready** - Tested in real enterprise environments
+- **Documentation** - Detailed policy explanations and rationale
 
 ## Configuration
 
@@ -143,7 +243,8 @@ M365BPAutoBaseLine/
 │   ├── Deploy-DefenderO365Baseline.ps1    # Defender for Office 365
 │   ├── Deploy-EntraIDBaseline.ps1         # Entra ID security
 │   ├── Deploy-PurviewBaseline.ps1         # Microsoft Purview
-│   └── Deploy-DefenderBusinessBaseline.ps1 # Defender for Business
+│   ├── Deploy-DefenderBusinessBaseline.ps1 # Defender for Business
+│   └── Deploy-IntuneBaseline.ps1          # Microsoft Intune
 ├── Config/
 │   └── M365BP-Config-Template.yaml        # Configuration template
 ├── Docs/
@@ -168,6 +269,7 @@ M365BPAutoBaseLine/
 
 ### 1. Review and Validate
 - Review all created policies in their respective admin centers
+- **Intune Admin Center**: Validate OpenIntuneBaseline policies and assignments
 - Validate policy assignments and exclusions
 - Test with pilot users before full rollout
 
@@ -182,6 +284,16 @@ For Defender for Office 365, manually configure:
 - Review policy effectiveness regularly
 - Adjust configurations based on organizational needs
 - Schedule periodic baseline reviews
+
+### 4. Intune-Specific Steps
+- **Validate OpenIntuneBaseline Policies**: Check all OIB policies are correctly imported in Intune admin center
+- **Monitor Device Compliance**: Review device compliance reports to ensure policies are being applied
+- **Test Policy Assignment**: Verify policies are assigned to correct Azure AD groups
+- **Check Device Enrollment**: Ensure devices are enrolling and receiving policies properly
+- **Review Security Baselines**: Validate that CIS, NCSC, and Microsoft baseline requirements are met
+- **Pilot Testing**: Gradually expand from pilot groups to full deployment
+- **Policy Conflicts**: Resolve any conflicts between different policy types
+- **User Impact Assessment**: Monitor user experience and helpdesk tickets for policy-related issues
 
 ## Post-Deployment Validation & Testing
 
@@ -200,7 +312,7 @@ The solution includes comprehensive post-deployment validation using the **Maest
 ```powershell
 # Test only Conditional Access and EIDSCA
 .\Scripts\Test-M365BPBaseline.ps1 `
-    -TestCategories @("ConditionalAccess", "EIDSCA") `
+    -TestCategories @("ConditionalAccess", "EIDSCA", "Intune") `
     -IncludeWhatIfTests `
     -GenerateReports
 ```
@@ -210,6 +322,7 @@ The solution includes comprehensive post-deployment validation using the **Maest
 - **DefenderO365**: Verifies Defender for Office 365 configurations
 - **EntraID**: Tests Entra ID security settings and configurations
 - **DefenderBusiness**: Validates Defender for Business/Endpoint policies
+- **Intune**: Validates Microsoft Intune device security baselines and OpenIntuneBaseline policies
 - **EIDSCA**: Runs Entra ID Security Config Analyzer (40+ security checks)
 - **Custom**: Executes organization-specific custom tests
 
@@ -224,7 +337,7 @@ The solution includes comprehensive post-deployment validation using the **Maest
 ```powershell
 # Schedule daily validation
 .\Scripts\Test-M365BPBaseline.ps1 `
-    -TestCategories @("EIDSCA", "ConditionalAccess") `
+    -TestCategories @("EIDSCA", "ConditionalAccess", "Intune") `
     -EmailNotification `
     -NotificationEmail "security@yourcompany.com"
 ```
@@ -301,6 +414,7 @@ This project integrates and builds upon several outstanding open-source projects
 
 ### Advanced Endpoint Security
 - **[MDEAutomator](https://github.com/msdirtbag/MDEAutomator)** by [@msdirtbag](https://github.com/msdirtbag) - Advanced Microsoft Defender for Endpoint automation and orchestration platform
+- **[OpenIntuneBaseline](https://github.com/SkipToTheEndpoint/OpenIntuneBaseline)** by [@SkipToTheEndpoint](https://github.com/SkipToTheEndpoint) - Community-driven baseline to accelerate Intune adoption and learning (GPL-3.0 License)
 
 ### Underlying Technologies
 - **[Pester](https://pester.dev/)** - PowerShell testing framework that powers Maester
