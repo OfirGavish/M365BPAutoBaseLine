@@ -66,17 +66,21 @@ $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $LogFile = Join-Path $ScriptPath "M365BP-Deployment-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 $TranscriptFile = Join-Path $ScriptPath "M365BP-FullTranscript-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 
-# Function to log messages
+# Start transcript for complete session logging
+Start-Transcript -Path $TranscriptFile -Append
+
+# Function to log messages with consolidated logging
 function Write-Log {
     param(
         [string]$Message, 
         [string]$Level = "INFO",
-        [switch]$NoConsole
+        [switch]$NoConsole,
+        [string]$Component = "MAIN"
     )
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "[$timestamp] [$Level] $Message"
+    $logEntry = "[$timestamp] [$Component] [$Level] $Message"
     
-    # Write to log file
+    # Write to consolidated log file
     Add-Content -Path $LogFile -Value $logEntry
     
     # Write to console unless suppressed
@@ -85,6 +89,7 @@ function Write-Log {
             "ERROR" { "Red" }
             "WARNING" { "Yellow" }
             "SUCCESS" { "Green" }
+            "INFO" { "Cyan" }
             default { "White" }
         }
         Write-Host $logEntry -ForegroundColor $color
@@ -105,31 +110,62 @@ function Show-Banner {
     Write-Log "Log file: $LogFile"
 }
 
-# Function to validate prerequisites
+# Function to validate prerequisites and load modules safely
 function Test-Prerequisites {
     Write-Log "Validating prerequisites..."
     
+    # Check if modules are already loaded to prevent conflicts
+    $loadedModules = Get-Module | Select-Object -ExpandProperty Name
+    
     $requiredModules = @(
-        "ExchangeOnlineManagement",
-        "Microsoft.Graph",
-        "Microsoft.Graph.Intune"
+        @{Name = "ExchangeOnlineManagement"; Components = @("DefenderO365", "All")},
+        @{Name = "Microsoft.Graph.Authentication"; Components = @("EntraID", "DefenderBusiness", "Intune", "ConditionalAccess", "All")},
+        @{Name = "Microsoft.Graph.DeviceManagement"; Components = @("DefenderBusiness", "Intune", "All")},
+        @{Name = "Microsoft.Graph.Identity.SignIns"; Components = @("EntraID", "ConditionalAccess", "All")},
+        @{Name = "Microsoft.Graph.Groups"; Components = @("EntraID", "DefenderBusiness", "Intune", "All")},
+        @{Name = "PnP.PowerShell"; Components = @("Purview", "All")}
     )
     
     $missingModules = @()
-    foreach ($module in $requiredModules) {
-        if (!(Get-Module -ListAvailable -Name $module)) {
-            $missingModules += $module
+    $needsModules = @()
+    
+    # Determine which modules we need based on selected components
+    foreach ($moduleInfo in $requiredModules) {
+        $needsModule = $false
+        foreach ($component in $Components) {
+            if ($moduleInfo.Components -contains $component) {
+                $needsModule = $true
+                break
+            }
+        }
+        
+        if ($needsModule) {
+            $needsModules += $moduleInfo.Name
+            if (!(Get-Module -ListAvailable -Name $moduleInfo.Name)) {
+                $missingModules += $moduleInfo.Name
+            }
         }
     }
     
     if ($missingModules.Count -gt 0) {
-        Write-Log "Missing required modules: $($missingModules -join ', ')" -Level "WARNING"
-        if (!$WhatIf) {
-            Write-Log "Installing missing modules..."
-            foreach ($module in $missingModules) {
-                Install-Module -Name $module -Force -AllowClobber -Scope CurrentUser
-                Write-Log "Installed module: $module"
+        Write-Log "Missing required modules: $($missingModules -join ', ')" -Level "ERROR"
+        throw "Please install missing modules using Install-Prerequisites.ps1"
+    }
+    
+    # Import required modules if not already loaded (prevents conflicts)
+    foreach ($moduleName in $needsModules) {
+        if ($loadedModules -notcontains $moduleName) {
+            try {
+                Write-Log "Loading module: $moduleName"
+                Import-Module $moduleName -Force -ErrorAction Stop
+                Write-Log "Successfully loaded: $moduleName" -Level "SUCCESS"
             }
+            catch {
+                Write-Log "Failed to load module $moduleName : $($_.Exception.Message)" -Level "ERROR"
+                throw "Module loading failed: $moduleName"
+            }
+        } else {
+            Write-Log "Module already loaded: $moduleName"
         }
     }
     
@@ -292,7 +328,7 @@ function Deploy-Purview {
 
 # Function to deploy Defender for Business
 function Deploy-DefenderBusiness {
-    param($Config)
+    param($Config, $ConflictResolution)
     
     Write-Log "=== Deploying Enhanced Defender for Business Baseline ===" -Level "INFO"
     
@@ -311,6 +347,27 @@ function Deploy-DefenderBusiness {
                 $params.InstallCustomDetections = $true
                 $params.ConfigureThreatIntelligence = $true
                 $params.TestMDEEnvironment = $true
+            }
+            
+            # Apply conflict resolution settings if available
+            if ($ConflictResolution) {
+                Write-Log "Applying conflict resolution to DefenderBusiness deployment" -Level "INFO"
+                if ($ConflictResolution.DefenderBusiness.DisableASR) {
+                    $params.DisableASR = $true
+                    Write-Log "DefenderBusiness: ASR rules disabled due to conflict resolution"
+                }
+                if ($ConflictResolution.DefenderBusiness.DisableCompliance) {
+                    $params.DisableCompliance = $true
+                    Write-Log "DefenderBusiness: Compliance policies disabled due to conflict resolution"
+                }
+                if ($ConflictResolution.DefenderBusiness.DisableTamperProtection) {
+                    $params.DisableTamperProtection = $true
+                    Write-Log "DefenderBusiness: Tamper protection disabled due to conflict resolution"
+                }
+                if ($ConflictResolution.DefenderBusiness.DisableEndpointProtection) {
+                    $params.DisableEndpointProtection = $true
+                    Write-Log "DefenderBusiness: Endpoint protection disabled due to conflict resolution"
+                }
             }
             
             # Add WhatIf parameter if specified
@@ -375,7 +432,7 @@ function Deploy-ConditionalAccess {
 
 # Function to deploy Intune baseline
 function Deploy-Intune {
-    param($Config)
+    param($Config, $ConflictResolution)
     
     Write-Log "=== Deploying Microsoft Intune Security Baseline (OpenIntuneBaseline) ===" -Level "INFO"
     
@@ -396,6 +453,32 @@ function Deploy-Intune {
             }
             if ($Config.IncludeBYOD) {
                 $params.Platforms += "BYOD"
+            }
+            
+            # Apply conflict resolution settings if available
+            if ($ConflictResolution) {
+                Write-Log "Applying conflict resolution to Intune deployment" -Level "INFO"
+                $excludePolicies = @()
+                
+                if ($ConflictResolution.Intune.ExcludePolicies -contains "ASR") {
+                    $params.ExcludeASR = $true
+                    $excludePolicies += "ASR"
+                    Write-Log "Intune: ASR policies excluded due to conflict resolution (handled by DefenderBusiness)"
+                }
+                if ($ConflictResolution.Intune.ExcludePolicies -contains "TamperProtection") {
+                    $params.ExcludeTamperProtection = $true
+                    $excludePolicies += "TamperProtection"
+                    Write-Log "Intune: Tamper Protection excluded due to conflict resolution (handled by DefenderBusiness)"
+                }
+                if ($ConflictResolution.Intune.ModifyCompliance) {
+                    $params.ModifyCompliance = $true
+                    Write-Log "Intune: Compliance policies will be coordinated with DefenderBusiness"
+                }
+                
+                # Add to ExcludePolicies parameter if needed
+                if ($excludePolicies.Count -gt 0) {
+                    $params.ExcludePolicies = $excludePolicies
+                }
             }
             
             # Add WhatIf parameter if specified
@@ -565,47 +648,202 @@ function Invoke-PostDeploymentValidation {
     }
 }
 
+# Function to establish service connections
+function Connect-Services {
+    param([string[]]$RequiredServices)
+    
+    Write-Log "Establishing service connections..." -Component "CONNECT"
+    
+    foreach ($service in $RequiredServices) {
+        Write-Log "Connecting to $service..." -Component "CONNECT"
+        
+        switch ($service) {
+            "ExchangeOnline" {
+                try {
+                    if (!(Get-ConnectionInformation -ErrorAction SilentlyContinue)) {
+                        Write-Log "Connecting to Exchange Online..." -Component "CONNECT"
+                        Connect-ExchangeOnline -ShowProgress $false -ShowBanner:$false
+                        Write-Log "Successfully connected to Exchange Online" -Level "SUCCESS" -Component "CONNECT"
+                    } else {
+                        Write-Log "Already connected to Exchange Online" -Component "CONNECT"
+                    }
+                }
+                catch {
+                    Write-Log "Failed to connect to Exchange Online: $($_.Exception.Message)" -Level "ERROR" -Component "CONNECT"
+                    throw "Exchange Online connection failed"
+                }
+            }
+            
+            "MicrosoftGraph" {
+                try {
+                    $context = Get-MgContext -ErrorAction SilentlyContinue
+                    if (!$context) {
+                        Write-Log "Connecting to Microsoft Graph..." -Component "CONNECT"
+                        $scopes = @(
+                            "DeviceManagementConfiguration.ReadWrite.All",
+                            "DeviceManagementManagedDevices.ReadWrite.All",
+                            "Directory.ReadWrite.All",
+                            "Group.ReadWrite.All",
+                            "Policy.ReadWrite.ConditionalAccess",
+                            "Application.ReadWrite.All"
+                        )
+                        Connect-MgGraph -Scopes $scopes -NoWelcome
+                        Write-Log "Successfully connected to Microsoft Graph" -Level "SUCCESS" -Component "CONNECT"
+                    } else {
+                        Write-Log "Already connected to Microsoft Graph (Tenant: $($context.TenantId))" -Component "CONNECT"
+                    }
+                }
+                catch {
+                    Write-Log "Failed to connect to Microsoft Graph: $($_.Exception.Message)" -Level "ERROR" -Component "CONNECT"
+                    throw "Microsoft Graph connection failed"
+                }
+            }
+            
+            "SharePoint" {
+                try {
+                    Write-Log "Connecting to SharePoint Online..." -Component "CONNECT"
+                    # SharePoint connection will be handled by PnP PowerShell in the Purview script
+                    Write-Log "SharePoint connection will be established by component script" -Component "CONNECT"
+                }
+                catch {
+                    Write-Log "Failed to connect to SharePoint: $($_.Exception.Message)" -Level "ERROR" -Component "CONNECT"
+                    throw "SharePoint connection failed"
+                }
+            }
+        }
+    }
+    
+    Write-Log "Service connections established successfully" -Level "SUCCESS" -Component "CONNECT"
+}
+
+# Function to disconnect from services
+function Disconnect-Services {
+    Write-Log "Disconnecting from services..." -Component "DISCONNECT"
+    
+    try {
+        if (Get-ConnectionInformation -ErrorAction SilentlyContinue) {
+            Disconnect-ExchangeOnline -Confirm:$false
+            Write-Log "Disconnected from Exchange Online" -Component "DISCONNECT"
+        }
+    }
+    catch {
+        Write-Log "Note: Exchange Online disconnect: $($_.Exception.Message)" -Level "WARNING" -Component "DISCONNECT"
+    }
+    
+    try {
+        if (Get-MgContext -ErrorAction SilentlyContinue) {
+            Disconnect-MgGraph
+            Write-Log "Disconnected from Microsoft Graph" -Component "DISCONNECT"
+        }
+    }
+    catch {
+        Write-Log "Note: Microsoft Graph disconnect: $($_.Exception.Message)" -Level "WARNING" -Component "DISCONNECT"
+    }
+    
+    Write-Log "Service disconnection completed" -Component "DISCONNECT"
+}
+
+# Function to load conflict resolution configuration
+function Get-ConflictResolutionConfig {
+    Write-Log "Checking for conflict resolution configuration..."
+    
+    # Look for the most recent conflict resolution file
+    $configFiles = Get-ChildItem -Path $ScriptPath -Filter "M365BP-ConflictResolution-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+    
+    if ($configFiles.Count -eq 0) {
+        Write-Log "No conflict resolution configuration found. Deploying without conflict resolution." -Level "WARNING"
+        return $null
+    }
+    
+    $latestConfig = $configFiles[0]
+    Write-Log "Loading conflict resolution configuration: $($latestConfig.Name)"
+    
+    try {
+        $configContent = Get-Content -Path $latestConfig.FullName -Raw | ConvertFrom-Json
+        Write-Log "Conflict resolution configuration loaded successfully" -Level "SUCCESS"
+        Write-Log "DefenderBusiness flags: DisableASR=$($configContent.ResolutionPlan.DefenderBusiness.DisableASR), DisableTamperProtection=$($configContent.ResolutionPlan.DefenderBusiness.DisableTamperProtection)"
+        Write-Log "Intune exclusions: $($configContent.ResolutionPlan.Intune.ExcludePolicies -join ', ')"
+        return $configContent.ResolutionPlan
+    }
+    catch {
+        Write-Log "Error loading conflict resolution configuration: $($_.Exception.Message)" -Level "ERROR"
+        return $null
+    }
+}
+
 # Main execution
 try {
-    # Start transcript to capture all output
-    Start-Transcript -Path $TranscriptFile -Append
-    
     Show-Banner
     
-    # Validate prerequisites
+    # Validate prerequisites and load modules
     Test-Prerequisites
     
     # Load configuration
     $config = Get-Configuration
+    Write-Log "Using configuration: $($config | ConvertTo-Json -Depth 2)" -Component "CONFIG"
+    
+    # Load conflict resolution configuration if available
+    $conflictResolution = Get-ConflictResolutionConfig
+    if ($conflictResolution) {
+        Write-Log "Conflict resolution configuration loaded - coordinated deployment enabled" -Level "SUCCESS" -Component "CONFIG"
+    } else {
+        Write-Log "No conflict resolution configuration - deploying with default settings" -Level "INFO" -Component "CONFIG"
+    }
+    
     # Expand "All" components
     if ($Components -contains "All") {
         $Components = @("DefenderO365", "EntraID", "Purview", "DefenderBusiness", "ConditionalAccess", "Intune")
     }
     
-    Write-Log "Starting deployment process..."    # Deploy each component
+    # Determine required service connections based on components
+    $requiredServices = @()
+    if ($Components -contains "DefenderO365") { $requiredServices += "ExchangeOnline" }
+    if ($Components -contains "EntraID" -or $Components -contains "DefenderBusiness" -or $Components -contains "Intune" -or $Components -contains "ConditionalAccess") { 
+        $requiredServices += "MicrosoftGraph" 
+    }
+    if ($Components -contains "Purview") { $requiredServices += "SharePoint" }
+    
+    # Establish service connections
+    if (!$WhatIf -and $requiredServices.Count -gt 0) {
+        Connect-Services -RequiredServices ($requiredServices | Select-Object -Unique)
+    }
+    
+    Write-Log "Starting deployment process..." -Component "DEPLOY"
+    
+    # Deploy each component
     foreach ($component in $Components) {
-        switch ($component) {
-            "DefenderO365" { Deploy-DefenderO365 -Config $config }
-            "EntraID" { Deploy-EntraID -Config $config }
-            "Purview" { Deploy-Purview -Config $config }
-            "DefenderBusiness" { Deploy-DefenderBusiness -Config $config }
-            "ConditionalAccess" { Deploy-ConditionalAccess -Config $config }
-            "Intune" { Deploy-Intune -Config $config }
+        Write-Log "=== Starting $component deployment ===" -Level "INFO" -Component $component.ToUpper()
+        
+        try {
+            switch ($component) {
+                "DefenderO365" { Deploy-DefenderO365 -Config $config }
+                "EntraID" { Deploy-EntraID -Config $config }
+                "Purview" { Deploy-Purview -Config $config }
+                "DefenderBusiness" { Deploy-DefenderBusiness -Config $config -ConflictResolution $conflictResolution }
+                "ConditionalAccess" { Deploy-ConditionalAccess -Config $config }
+                "Intune" { Deploy-Intune -Config $config -ConflictResolution $conflictResolution }
+            }
+            Write-Log "=== $component deployment completed successfully ===" -Level "SUCCESS" -Component $component.ToUpper()
+        }
+        catch {
+            Write-Log "=== $component deployment FAILED: $($_.Exception.Message) ===" -Level "ERROR" -Component $component.ToUpper()
+            throw "Component deployment failed: $component"
         }
     }
     
     # Run post-deployment validation tests
     if ($RunPostDeploymentTests -and -not $WhatIf) {
+        Write-Log "=== Starting post-deployment validation ===" -Level "INFO" -Component "VALIDATE"
         Invoke-PostDeploymentValidation -Config $config
     }
     
     # Generate report
     $reportPath = New-DeploymentReport
     
-    Write-Log "=== Deployment Completed Successfully ===" -Level "SUCCESS"
-    Write-Log "Report generated: $reportPath" -Level "SUCCESS"
-    Write-Log "Log file: $LogFile" -Level "SUCCESS"
-    Write-Log "Full transcript file: $TranscriptFile" -Level "SUCCESS"
+    Write-Log "=== DEPLOYMENT COMPLETED SUCCESSFULLY ===" -Level "SUCCESS" -Component "COMPLETE"
+    Write-Log "Report generated: $reportPath" -Level "SUCCESS" -Component "COMPLETE"
+    Write-Log "Log file: $LogFile" -Level "SUCCESS" -Component "COMPLETE"
+    Write-Log "Full transcript file: $TranscriptFile" -Level "SUCCESS" -Component "COMPLETE"
     
     # Open report if not in WhatIf mode
     if (!$WhatIf -and (Test-Path $reportPath)) {
@@ -613,12 +851,17 @@ try {
     }
 }
 catch {
-    Write-Log "Deployment failed: $($_.Exception.Message)" -Level "ERROR"
-    Write-Log "Check the log file for detailed error information: $LogFile" -Level "ERROR"
-    Write-Log "Check the full transcript for complete output: $TranscriptFile" -Level "ERROR"
+    Write-Log "DEPLOYMENT FAILED: $($_.Exception.Message)" -Level "ERROR" -Component "MAIN"
+    Write-Log "Check the log file for detailed error information: $LogFile" -Level "ERROR" -Component "MAIN"
+    Write-Log "Check the full transcript for complete output: $TranscriptFile" -Level "ERROR" -Component "MAIN"
     exit 1
 }
 finally {
+    # Disconnect from services
+    if (!$WhatIf) {
+        Disconnect-Services
+    }
+    
     # Stop transcript
-    Stop-Transcript
+    try { Stop-Transcript } catch { }
 }

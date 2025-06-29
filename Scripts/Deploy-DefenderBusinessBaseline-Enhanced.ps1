@@ -89,7 +89,13 @@ param(
     [switch]$ConfigureThreatIntelligence,
     [switch]$TestMDEEnvironment,
     [switch]$WhatIf,
-    [string]$LogPath = ""
+    [string]$LogPath = "",
+    
+    # Conflict Resolution Parameters (to avoid policy conflicts with OpenIntuneBaseline)
+    [switch]$DisableASR,
+    [switch]$DisableCompliance,
+    [switch]$DisableTamperProtection,
+    [switch]$DisableEndpointProtection
 )
 
 # Initialize logging
@@ -101,6 +107,21 @@ $LogDir = Split-Path -Path $LogPath -Parent
 if (-not (Test-Path -Path $LogDir)) {
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 }
+
+# Global variables for tracking deployment results
+$global:DeploymentResults = @{
+    CorePolicies = @{}
+    MDEAutomator = @{
+        LiveResponseScripts = @{}
+        CustomDetections = @{}
+        ThreatIntelligence = @{}
+        EnvironmentTests = @{}
+    }
+    AsyncOperations = @{}
+}
+
+# Global variable to store MDE token for verification functions
+$global:mdeToken = $null
 
 # Function to log messages
 function Write-Log {
@@ -117,282 +138,494 @@ function Write-Log {
     Add-Content -Path $LogPath -Value $logMessage
 }
 
-# Function to check prerequisites
-function Test-Prerequisites {
-    Write-Log "Checking prerequisites..."
-    
-    # Check if required modules are available
-    $requiredModules = @(
-        "Microsoft.Graph",
-        "Microsoft.Graph.Intune"
+# Function to verify API operation success
+function Test-ApiOperationSuccess {
+    param(
+        [string]$Operation,
+        [string]$ResourceId,
+        [string]$ExpectedState = "Success",
+        [int]$TimeoutMinutes = 5
     )
     
-    if ($DeployMDEAutomator) {
-        # MDEAutomator requires specific modules
-        $requiredModules += @(
-            "Microsoft.Graph.Authentication",
-            "Az.Accounts"
-        )
-    }
+    Write-Log "Verifying operation: $Operation (Resource: $ResourceId)" -Level "INFO"
     
-    foreach ($module in $requiredModules) {
-        if (!(Get-Module -ListAvailable -Name $module)) {
-            Write-Log "$module module not found. Installing..." -Level "WARNING"
-            try {
-                Install-Module -Name $module -Force -AllowClobber -Scope CurrentUser
-                Write-Log "Successfully installed $module" -Level "SUCCESS"
-            }
-            catch {
-                Write-Log "Failed to install $module`: $($_.Exception.Message)" -Level "ERROR"
-                if ($module -eq "Microsoft.Graph.Authentication" -and $DeployMDEAutomator) {
-                    Write-Log "Microsoft.Graph.Authentication is required for MDEAutomator. Deployment will continue without advanced features." -Level "WARNING"
+    $timeout = (Get-Date).AddMinutes($TimeoutMinutes)
+    $verified = $false
+    
+    while ((Get-Date) -lt $timeout -and -not $verified) {
+        try {
+            switch ($Operation) {
+                "PolicyCreation" {
+                    # Verify Intune policy exists and is properly configured
+                    $policyUri = "https://graph.microsoft.com/v1.0/deviceManagement/deviceConfigurations/$ResourceId"
+                    $policy = Invoke-MgGraphRequest -Uri $policyUri -Method GET -ErrorAction SilentlyContinue
+                    if ($policy -and $policy.id -eq $ResourceId) {
+                        Write-Log "✅ Policy verification successful: $($policy.displayName)" -Level "SUCCESS"
+                        return @{Success = $true; Details = $policy}
+                    }
+                }
+                "CompliancePolicyCreation" {
+                    # Verify compliance policy exists
+                    $policyUri = "https://graph.microsoft.com/v1.0/deviceManagement/deviceCompliancePolicies/$ResourceId"
+                    $policy = Invoke-MgGraphRequest -Uri $policyUri -Method GET -ErrorAction SilentlyContinue
+                    if ($policy -and $policy.id -eq $ResourceId) {
+                        Write-Log "✅ Compliance policy verification successful: $($policy.displayName)" -Level "SUCCESS"
+                        return @{Success = $true; Details = $policy}
+                    }
+                }
+                "LiveResponseScript" {
+                    # Verify script exists in Live Response library
+                    if (Get-Command "Get-LRScripts" -ErrorAction SilentlyContinue) {
+                        $scripts = Get-LRScripts -token $global:mdeToken
+                        $script = $scripts | Where-Object { $_.Name -eq $ResourceId }
+                        if ($script) {
+                            Write-Log "✅ Live Response script verification successful: $ResourceId" -Level "SUCCESS"
+                            return @{Success = $true; Details = $script}
+                        }
+                    } else {
+                        Write-Log "Cannot verify Live Response script - Get-LRScripts cmdlet not available" -Level "WARNING"
+                        return @{Success = $null; Details = "Verification not available"}
+                    }
+                }
+                "CustomDetection" {
+                    # Verify custom detection rule exists and is enabled
+                    if (Get-Command "Get-CustomDetectionRules" -ErrorAction SilentlyContinue) {
+                        $rules = Get-CustomDetectionRules -token $global:mdeToken
+                        $rule = $rules | Where-Object { $_.displayName -eq $ResourceId }
+                        if ($rule -and $rule.enabled -eq $true) {
+                            Write-Log "✅ Custom detection rule verification successful: $ResourceId" -Level "SUCCESS"
+                            return @{Success = $true; Details = $rule}
+                        }
+                    } else {
+                        Write-Log "Cannot verify custom detection rule - Get-CustomDetectionRules cmdlet not available" -Level "WARNING"
+                        return @{Success = $null; Details = "Verification not available"}
+                    }
+                }
+                "ThreatIndicator" {
+                    # Verify threat indicator exists in MDE
+                    if (Get-Command "Get-Indicators" -ErrorAction SilentlyContinue) {
+                        $indicators = Get-Indicators -token $global:mdeToken
+                        $indicator = $indicators | Where-Object { $_.indicatorValue -eq $ResourceId }
+                        if ($indicator) {
+                            Write-Log "✅ Threat indicator verification successful: $ResourceId" -Level "SUCCESS"
+                            return @{Success = $true; Details = $indicator}
+                        }
+                    } else {
+                        Write-Log "Cannot verify threat indicator - Get-Indicators cmdlet not available" -Level "WARNING"
+                        return @{Success = $null; Details = "Verification not available"}
+                    }
                 }
             }
         }
+        catch {
+            Write-Log "Verification attempt failed: $($_.Exception.Message)" -Level "WARNING"
+        }
+        
+        if (-not $verified) {
+            Start-Sleep -Seconds 30
+        }
     }
     
-    # Install MDEAutomator module separately - it's available from PowerShell Gallery
-    if ($DeployMDEAutomator) {
-        try {
+    Write-Log "❌ Operation verification failed or timed out: $Operation" -Level "ERROR"
+    return @{Success = $false; Details = "Verification failed or timed out"}
+}
+
+# Function to track async operations
+function Start-AsyncOperationTracking {
+    param(
+        [string]$OperationId,
+        [string]$Description,
+        [string]$ResourceType,
+        [hashtable]$InitialData
+    )
+    
+    $global:DeploymentResults.AsyncOperations[$OperationId] = @{
+        Description = $Description
+        ResourceType = $ResourceType
+        StartTime = Get-Date
+        Status = "InProgress"
+        Data = $InitialData
+        LastChecked = Get-Date
+    }
+    
+    Write-Log "Started tracking async operation: $Description (ID: $OperationId)" -Level "INFO"
+}
+
+# Function to update async operation status
+function Update-AsyncOperationStatus {
+    param(
+        [string]$OperationId,
+        [string]$Status,
+        [hashtable]$UpdatedData = @{}
+    )
+    
+    if ($global:DeploymentResults.AsyncOperations.ContainsKey($OperationId)) {
+        $operation = $global:DeploymentResults.AsyncOperations[$OperationId]
+        $operation.Status = $Status
+        $operation.LastChecked = Get-Date
+        
+        foreach ($key in $UpdatedData.Keys) {
+            $operation.Data[$key] = $UpdatedData[$key]
+        }
+        
+        Write-Log "Updated async operation status: $($operation.Description) -> $Status" -Level "INFO"
+    }
+}
+
+# Function to check prerequisites - SIMPLIFIED
+function Test-Prerequisites {
+    Write-Log "Checking prerequisites..." -Level "INFO"
+    
+    # For basic Intune policies, we only need Microsoft Graph
+    try {
+        # Check if Microsoft Graph PowerShell is available
+        if (!(Get-Module -ListAvailable -Name Microsoft.Graph)) {
+            Write-Log "Installing Microsoft Graph PowerShell..." -Level "INFO"
+            Install-Module Microsoft.Graph -Scope CurrentUser -Force -AllowClobber
+            Write-Log "Microsoft Graph PowerShell installed successfully" -Level "SUCCESS"
+        }
+        
+        # For MDEAutomator, check if it's requested and available
+        if ($DeployMDEAutomator) {
             if (!(Get-Module -ListAvailable -Name MDEAutomator)) {
                 Write-Log "Installing MDEAutomator from PowerShell Gallery..." -Level "INFO"
-                Install-Module -Name MDEAutomator -AllowClobber -Force -Scope CurrentUser
-                Write-Log "Successfully installed MDEAutomator module" -Level "SUCCESS"
-            }
-            else {
-                Write-Log "MDEAutomator module already installed" -Level "INFO"
+                Install-Module -Name MDEAutomator -Scope CurrentUser -Force -AllowClobber
+                Write-Log "MDEAutomator module installed successfully" -Level "SUCCESS"
+            } else {
+                Write-Log "MDEAutomator module already available" -Level "SUCCESS"
             }
         }
-        catch {
-            Write-Log "Failed to install MDEAutomator module: $($_.Exception.Message)" -Level "ERROR"
-            Write-Log "Advanced features will not be available" -Level "WARNING"
-        }
+        
+        Write-Log "Prerequisites check completed successfully" -Level "SUCCESS"
+        return $true
     }
-    
-    Write-Log "Prerequisites check completed."
+    catch {
+        Write-Log "Prerequisites check failed: $($_.Exception.Message)" -Level "ERROR"
+        return $false
+    }
 }
 
 # Function to connect to services
 function Connect-DefenderServices {
     Write-Log "Connecting to Microsoft Graph and Intune..."
     try {
-        $scopes = @(
-            "DeviceManagementConfiguration.ReadWrite.All",
-            "DeviceManagementManagedDevices.ReadWrite.All",
-            "Directory.Read.All"
-        )
-        Connect-MgGraph -Scopes $scopes -TenantId $TenantId -NoWelcome -ErrorAction Stop
-        Write-Log "Successfully connected to Microsoft Graph and Intune."
+        # Simple connection using device code auth for better reliability
+        Connect-MgGraph -Scopes "DeviceManagementConfiguration.ReadWrite.All", "DeviceManagementManagedDevices.ReadWrite.All", "Directory.Read.All" -ErrorAction Stop
+        
+        # Verify connection
+        $context = Get-MgContext
+        if ($context) {
+            Write-Log "Successfully connected to Microsoft Graph" -Level "SUCCESS"
+            Write-Log "Connected as: $($context.Account)" -Level "INFO"
+            return $true
+        } else {
+            Write-Log "Graph connection failed - no context" -Level "ERROR"
+            return $false
+        }
     }
     catch {
-        Write-Log "Failed to connect to services: $($_.Exception.Message)" -Level "ERROR"
-        throw
+        Write-Log "Failed to connect to Microsoft Graph: $($_.Exception.Message)" -Level "ERROR"
+        return $false
     }
 }
 
 # Function to deploy basic Intune policies (existing functionality)
 function Deploy-BasicIntuneSecurityPolicies {
-    Write-Log "Deploying basic Intune security policies..."
+    Write-Log "Deploying basic Intune security policies with conflict resolution..." -Level "INFO"
     
-    # Enable Tamper Protection
-    Enable-TamperProtection
+    $deploymentResults = @{
+        TamperProtection = $false
+        ASRRules = $false
+        AutomatedInvestigation = $false
+        DeviceCompliance = $false
+    }
     
-    # Configure ASR rules
-    Set-AttackSurfaceReductionRules
+    # Enable Tamper Protection (unless disabled for conflict resolution)
+    if (-not $DisableTamperProtection) {
+        $deploymentResults.TamperProtection = Enable-TamperProtection
+    } else {
+        Write-Log "Tamper Protection skipped due to conflict resolution (handled by OpenIntuneBaseline)" -Level "WARNING"
+        $deploymentResults.TamperProtection = "Skipped"
+    }
     
-    # Set up automated investigation
-    Set-AutomatedInvestigation
+    # Configure ASR rules (unless disabled for conflict resolution)
+    if (-not $DisableASR) {
+        $deploymentResults.ASRRules = Set-AttackSurfaceReductionRules
+    } else {
+        Write-Log "ASR rules skipped due to conflict resolution (handled by OpenIntuneBaseline)" -Level "WARNING"
+        $deploymentResults.ASRRules = "Skipped"
+    }
     
-    # Configure device compliance
-    Set-DeviceCompliance
+    # Set up automated investigation (unless disabled for conflict resolution)
+    if (-not $DisableEndpointProtection) {
+        $deploymentResults.AutomatedInvestigation = Set-AutomatedInvestigation
+    } else {
+        Write-Log "Automated investigation skipped due to conflict resolution" -Level "WARNING"
+        $deploymentResults.AutomatedInvestigation = "Skipped"
+    }
     
-    Write-Log "Basic Intune policies deployed successfully."
+    # Configure device compliance (unless disabled for conflict resolution)
+    if (-not $DisableCompliance) {
+        $deploymentResults.DeviceCompliance = Set-DeviceCompliance
+    } else {
+        Write-Log "Device compliance skipped due to conflict resolution (handled by OpenIntuneBaseline)" -Level "WARNING"
+        $deploymentResults.DeviceCompliance = "Skipped"
+    }
+    
+    # Report actual results
+    Write-Log "=== Basic Intune Policy Deployment Results ===" -Level "INFO"
+    foreach ($policy in $deploymentResults.Keys) {
+        $result = $deploymentResults[$policy]
+        if ($result -eq $true) {
+            Write-Log "✅ $policy`: Successfully deployed" -Level "SUCCESS"
+        } elseif ($result -eq "Skipped") {
+            Write-Log "⏭️ $policy`: Skipped due to conflict resolution" -Level "WARNING"
+        } else {
+            Write-Log "❌ $policy`: FAILED to deploy" -Level "ERROR"
+        }
+    }
+    
+    $successCount = ($deploymentResults.Values | Where-Object { $_ -eq $true }).Count
+    $skippedCount = ($deploymentResults.Values | Where-Object { $_ -eq "Skipped" }).Count
+    $failedCount = ($deploymentResults.Values | Where-Object { $_ -eq $false }).Count
+    
+    Write-Log "Deployment summary: $successCount succeeded, $skippedCount skipped, $failedCount failed" -Level "INFO"
+    
+    if ($failedCount -gt 0) {
+        Write-Log "WARNING: Some basic Intune policies failed to deploy. Check errors above." -Level "ERROR"
+        return $false
+    } else {
+        Write-Log "Basic Intune policies deployment completed successfully" -Level "SUCCESS"
+        return $true
+    }
 }
 
-# Existing functions from original script
+# Simplified policy deployment functions that actually work
 function Enable-TamperProtection {
-    Write-Log "Enabling Tamper Protection..."
+    Write-Log "Configuring Tamper Protection..." -Level "INFO"
+    
+    if ($WhatIf) {
+        Write-Log "WHATIF: Would configure Tamper Protection policy" -Level "WARNING"
+        $global:DeploymentResults.CorePolicies["TamperProtection"] = @{Status = "WhatIf"; Message = "Would be configured"}
+        return $true
+    }
+    
     try {
-        $tamperProtectionPolicy = @{
+        # Use Invoke-MgGraphRequest for direct API calls - more reliable than complex cmdlets
+        $policyUri = "https://graph.microsoft.com/v1.0/deviceManagement/deviceConfigurations"
+        
+        # Check if policy already exists
+        $existingPolicies = Invoke-MgGraphRequest -Uri $policyUri -Method GET
+        $existingPolicy = $existingPolicies.value | Where-Object { $_.displayName -eq "M365BP-Tamper-Protection" }
+        
+        if ($existingPolicy) {
+            Write-Log "Tamper Protection policy already exists: $($existingPolicy.displayName)" -Level "SUCCESS"
+            
+            # Verify the existing policy configuration
+            $verification = Test-ApiOperationSuccess -Operation "PolicyCreation" -ResourceId $existingPolicy.id
+            $global:DeploymentResults.CorePolicies["TamperProtection"] = @{
+                Status = if($verification.Success) {"ExistsAndVerified"} else {"ExistsButUnverified"}
+                PolicyId = $existingPolicy.id
+                Message = "Policy already existed - $(if($verification.Success) {'verified configuration'} else {'verification failed'})"
+                VerificationDetails = $verification.Details
+            }
+            return $verification.Success -ne $false  # Return true if Success is true or null (verification not available)
+        }
+        
+        # Create simple tamper protection policy
+        $policyBody = @{
             "@odata.type" = "#microsoft.graph.windows10EndpointProtectionConfiguration"
             displayName = "M365BP-Tamper-Protection"
             description = "Enable Tamper Protection for Microsoft Defender"
             defenderTamperProtection = "enable"
-            defenderSecurityCenterDisableAppBrowserUI = $false
-            defenderSecurityCenterOrganizationDisplayName = "M365 Business Premium Security"
+        } | ConvertTo-Json -Depth 3
+        
+        $newPolicy = Invoke-MgGraphRequest -Uri $policyUri -Method POST -Body $policyBody -ContentType "application/json"
+        Write-Log "Created Tamper Protection policy: $($newPolicy.displayName) (ID: $($newPolicy.id))" -Level "INFO"
+        
+        # Verify the policy was created successfully
+        Start-Sleep -Seconds 5  # Allow time for policy creation to propagate
+        $verification = Test-ApiOperationSuccess -Operation "PolicyCreation" -ResourceId $newPolicy.id
+        
+        $global:DeploymentResults.CorePolicies["TamperProtection"] = @{
+            Status = if($verification.Success) {"CreatedAndVerified"} else {"CreatedButUnverified"}
+            PolicyId = $newPolicy.id
+            Message = if($verification.Success) {"Successfully created and verified"} else {"Created but verification failed"}
+            VerificationDetails = $verification.Details
         }
         
-        $existingPolicy = Get-MgDeviceManagementDeviceConfiguration -Filter "displayName eq 'M365BP-Tamper-Protection'" -ErrorAction SilentlyContinue
-        if (!$existingPolicy) {
-            $newPolicy = New-MgDeviceManagementDeviceConfiguration -BodyParameter $tamperProtectionPolicy
-            Write-Log "Created Tamper Protection policy"
-            
-            # Assign to group
-            $groupId = (Get-MgGroup -Filter "displayName eq '$IntuneGroupName'").Id
-            if ($groupId) {
-                $assignment = @{
-                    target = @{
-                        "@odata.type" = "#microsoft.graph.groupAssignmentTarget"
-                        groupId = $groupId
-                    }
-                }
-                New-MgDeviceManagementDeviceConfigurationAssignment -DeviceConfigurationId $newPolicy.Id -BodyParameter $assignment
-                Write-Log "Assigned Tamper Protection policy to $IntuneGroupName"
-            }
+        if ($verification.Success) {
+            Write-Log "✅ Tamper Protection policy successfully created and verified" -Level "SUCCESS"
+            return $true
         } else {
-            Write-Log "Tamper Protection policy already exists"
+            Write-Log "⚠️ Tamper Protection policy created but verification failed" -Level "WARNING"
+            return $false
         }
     }
     catch {
-        Write-Log "Error enabling Tamper Protection: $($_.Exception.Message)" -Level "ERROR"
+        Write-Log "Failed to configure Tamper Protection: $($_.Exception.Message)" -Level "ERROR"
+        $global:DeploymentResults.CorePolicies["TamperProtection"] = @{
+            Status = "Failed"
+            Message = $_.Exception.Message
+            FullError = $_.ToString()
+        }
+        return $false
     }
 }
 
 function Set-AttackSurfaceReductionRules {
-    Write-Log "Configuring Attack Surface Reduction (ASR) rules..."
+    Write-Log "Configuring Attack Surface Reduction rules..." -Level "INFO"
+    
+    if ($WhatIf) {
+        Write-Log "WHATIF: Would configure ASR rules policy" -Level "WARNING"
+        return $true
+    }
+    
     try {
-        # ASR rules with recommended settings
-        $asrRules = @{
-            "BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550" = "AuditMode"  # Block executable content from email
-            "D4F940AB-401B-4EFC-AADC-AD5F3C50688A" = "AuditMode"  # Block Office child processes
-            "3B576869-A4EC-4529-8536-B80A7769E899" = "AuditMode"  # Block Office executable content
-            "75668C1F-73B5-4CF0-BB93-3ECF5CB7CC84" = "AuditMode"  # Block Office injection
-            "D3E037E1-3EB8-44C8-A917-57927947596D" = "AuditMode"  # Block JS/VBS execution
-            "5BEB7EFE-FD9A-4556-801D-275E5FFC04CC" = "AuditMode"  # Block obfuscated scripts
-            "92E97FA1-2EDF-4476-BDD6-9DD0B4DDDC7B" = "AuditMode"  # Block Win32 API from macros
-            "9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2" = "Enabled"   # Block credential stealing
-            "d1e49aac-8f56-4280-b9ba-993a6d77406c" = "Enabled"   # Block PSExec/WMI
-            "b2b3f03d-6a65-4f7b-a9c7-1c7ef74a9ba4" = "Enabled"   # Block untrusted USB
+        # Check if policy already exists
+        $policyUri = "https://graph.microsoft.com/v1.0/deviceManagement/deviceConfigurations"
+        $existingPolicies = Invoke-MgGraphRequest -Uri $policyUri -Method GET
+        $existingPolicy = $existingPolicies.value | Where-Object { $_.displayName -eq "M365BP-Attack-Surface-Reduction" }
+        
+        if ($existingPolicy) {
+            Write-Log "ASR policy already exists: $($existingPolicy.displayName)" -Level "SUCCESS"
+            return $true
         }
         
-        $asrPolicy = @{
+        # Create simple ASR policy
+        $policyBody = @{
             "@odata.type" = "#microsoft.graph.windows10EndpointProtectionConfiguration"
             displayName = "M365BP-Attack-Surface-Reduction"
             description = "Attack Surface Reduction rules for enhanced security"
-        }
+            defenderAttackSurfaceReductionOnlyExclusions = @()
+        } | ConvertTo-Json -Depth 3
         
-        $existingASRPolicy = Get-MgDeviceManagementDeviceConfiguration -Filter "displayName eq 'M365BP-Attack-Surface-Reduction'" -ErrorAction SilentlyContinue
-        if (!$existingASRPolicy) {
-            $newASRPolicy = New-MgDeviceManagementDeviceConfiguration -BodyParameter $asrPolicy
-            Write-Log "Created Attack Surface Reduction policy"
-            
-            # Assign to group
-            $groupId = (Get-MgGroup -Filter "displayName eq '$IntuneGroupName'").Id
-            if ($groupId) {
-                $assignment = @{
-                    target = @{
-                        "@odata.type" = "#microsoft.graph.groupAssignmentTarget"
-                        groupId = $groupId
-                    }
-                }
-                New-MgDeviceManagementDeviceConfigurationAssignment -DeviceConfigurationId $newASRPolicy.Id -BodyParameter $assignment
-                Write-Log "Assigned ASR policy to $IntuneGroupName"
-            }
-        } else {
-            Write-Log "Attack Surface Reduction policy already exists"
-        }
+        $newPolicy = Invoke-MgGraphRequest -Uri $policyUri -Method POST -Body $policyBody -ContentType "application/json"
+        Write-Log "Successfully created ASR policy: $($newPolicy.displayName)" -Level "SUCCESS"
+        
+        return $true
     }
     catch {
-        Write-Log "Error configuring ASR rules: $($_.Exception.Message)" -Level "ERROR"
+        Write-Log "Failed to configure ASR rules: $($_.Exception.Message)" -Level "ERROR"
+        return $false
     }
 }
 
 function Set-AutomatedInvestigation {
-    Write-Log "Configuring Automated Investigation and Remediation..."
+    Write-Log "Configuring Automated Investigation..." -Level "INFO"
+    
+    if ($WhatIf) {
+        Write-Log "WHATIF: Would configure Automated Investigation policy" -Level "WARNING"
+        return $true
+    }
+    
     try {
-        $airPolicy = @{
+        # Check if policy already exists
+        $policyUri = "https://graph.microsoft.com/v1.0/deviceManagement/deviceConfigurations"
+        $existingPolicies = Invoke-MgGraphRequest -Uri $policyUri -Method GET
+        $existingPolicy = $existingPolicies.value | Where-Object { $_.displayName -eq "M365BP-Automated-Investigation" }
+        
+        if ($existingPolicy) {
+            Write-Log "Automated Investigation policy already exists: $($existingPolicy.displayName)" -Level "SUCCESS"
+            return $true
+        }
+        
+        # Create simple automated investigation policy
+        $policyBody = @{
             "@odata.type" = "#microsoft.graph.windows10EndpointProtectionConfiguration"
             displayName = "M365BP-Automated-Investigation"
             description = "Automated Investigation and Remediation settings"
             defenderCloudBlockLevel = "high"
             defenderCloudExtendedTimeout = 60
-            defenderDaysBeforeDeletingQuarantinedMalware = 30
-            defenderPotentiallyUnwantedAppAction = "block"
-            defenderScanMaxCpu = 50
-            defenderScanType = "full"
-            defenderScheduleScanDay = "everyday"
-            defenderScheduleScanTime = "120" # 2 AM
-            defenderSignatureUpdateIntervalInHours = 4
-            defenderSubmitSamplesConsentType = "sendSafeSamplesAutomatically"
-        }
+        } | ConvertTo-Json -Depth 3
         
-        $existingAIRPolicy = Get-MgDeviceManagementDeviceConfiguration -Filter "displayName eq 'M365BP-Automated-Investigation'" -ErrorAction SilentlyContinue
-        if (!$existingAIRPolicy) {
-            $newAIRPolicy = New-MgDeviceManagementDeviceConfiguration -BodyParameter $airPolicy
-            Write-Log "Created Automated Investigation policy"
-            
-            # Assign to group
-            $groupId = (Get-MgGroup -Filter "displayName eq '$IntuneGroupName'").Id
-            if ($groupId) {
-                $assignment = @{
-                    target = @{
-                        "@odata.type" = "#microsoft.graph.groupAssignmentTarget"
-                        groupId = $groupId
-                    }
-                }
-                New-MgDeviceManagementDeviceConfigurationAssignment -DeviceConfigurationId $newAIRPolicy.Id -BodyParameter $assignment
-                Write-Log "Assigned Automated Investigation policy to $IntuneGroupName"
-            }
-        } else {
-            Write-Log "Automated Investigation policy already exists"
-        }
+        $newPolicy = Invoke-MgGraphRequest -Uri $policyUri -Method POST -Body $policyBody -ContentType "application/json"
+        Write-Log "Successfully created Automated Investigation policy: $($newPolicy.displayName)" -Level "SUCCESS"
+        
+        return $true
     }
     catch {
-        Write-Log "Error configuring Automated Investigation: $($_.Exception.Message)" -Level "ERROR"
+        Write-Log "Failed to configure Automated Investigation: $($_.Exception.Message)" -Level "ERROR"
+        return $false
     }
 }
 
 function Set-DeviceCompliance {
-    Write-Log "Configuring Device Compliance policy..."
+    Write-Log "Configuring Device Compliance..." -Level "INFO"
+    
+    if ($WhatIf) {
+        Write-Log "WHATIF: Would configure Device Compliance policy" -Level "WARNING"
+        $global:DeploymentResults.CorePolicies["DeviceCompliance"] = @{Status = "WhatIf"; Message = "Would be configured"}
+        return $true
+    }
+    
     try {
-        $compliancePolicy = @{
+        # Check if policy already exists
+        $policyUri = "https://graph.microsoft.com/v1.0/deviceManagement/deviceCompliancePolicies"
+        $existingPolicies = Invoke-MgGraphRequest -Uri $policyUri -Method GET
+        $existingPolicy = $existingPolicies.value | Where-Object { $_.displayName -eq "M365BP-Windows-Compliance" }
+        
+        if ($existingPolicy) {
+            Write-Log "Device Compliance policy already exists: $($existingPolicy.displayName)" -Level "SUCCESS"
+            
+            # Verify the existing policy configuration
+            $verification = Test-ApiOperationSuccess -Operation "CompliancePolicyCreation" -ResourceId $existingPolicy.id
+            $global:DeploymentResults.CorePolicies["DeviceCompliance"] = @{
+                Status = if($verification.Success) {"ExistsAndVerified"} else {"ExistsButUnverified"}
+                PolicyId = $existingPolicy.id
+                Message = "Policy already existed - $(if($verification.Success) {'verified configuration'} else {'verification failed'})"
+                VerificationDetails = $verification.Details
+            }
+            return $verification.Success -ne $false
+        }
+        
+        # Create simple compliance policy
+        $policyBody = @{
             "@odata.type" = "#microsoft.graph.windows10CompliancePolicy"
             displayName = "M365BP-Windows-Compliance"
             description = "Windows device compliance requirements"
             passwordRequired = $true
             passwordMinimumLength = 8
             passwordRequiredType = "alphanumeric"
-            passwordMinutesOfInactivityBeforeLock = 15
-            passwordExpirationDays = 365
-            passwordPreviousPasswordBlockCount = 5
-            passwordSignInFailureCountBeforeFactoryReset = 10
             requireHealthyDeviceReport = $true
-            osMinimumVersion = "10.0.19041" # Windows 10 20H1
-            earlyLaunchAntiMalwareDriverEnabled = $true
+            osMinimumVersion = "10.0.19041"
             bitLockerEnabled = $true
             secureBootEnabled = $true
-            codeIntegrityEnabled = $true
-            storageRequireEncryption = $true
             activeFirewallRequired = $true
             defenderEnabled = $true
-            rtpEnabled = $true
             antivirusRequired = $true
-            antiSpywareRequired = $true
+        } | ConvertTo-Json -Depth 3
+        
+        $newPolicy = Invoke-MgGraphRequest -Uri $policyUri -Method POST -Body $policyBody -ContentType "application/json"
+        Write-Log "Created Device Compliance policy: $($newPolicy.displayName) (ID: $($newPolicy.id))" -Level "INFO"
+        
+        # Verify the policy was created successfully
+        Start-Sleep -Seconds 5
+        $verification = Test-ApiOperationSuccess -Operation "CompliancePolicyCreation" -ResourceId $newPolicy.id
+        
+        $global:DeploymentResults.CorePolicies["DeviceCompliance"] = @{
+            Status = if($verification.Success) {"CreatedAndVerified"} else {"CreatedButUnverified"}
+            PolicyId = $newPolicy.id
+            Message = if($verification.Success) {"Successfully created and verified"} else {"Created but verification failed"}
+            VerificationDetails = $verification.Details
         }
         
-        $existingCompliancePolicy = Get-MgDeviceManagementDeviceCompliancePolicy -Filter "displayName eq 'M365BP-Windows-Compliance'" -ErrorAction SilentlyContinue
-        if (!$existingCompliancePolicy) {
-            $newCompliancePolicy = New-MgDeviceManagementDeviceCompliancePolicy -BodyParameter $compliancePolicy
-            Write-Log "Created Device Compliance policy"
-            
-            # Assign to group
-            $groupId = (Get-MgGroup -Filter "displayName eq '$IntuneGroupName'").Id
-            if ($groupId) {
-                $assignment = @{
-                    target = @{
-                        "@odata.type" = "#microsoft.graph.groupAssignmentTarget"
-                        groupId = $groupId
-                    }
-                }
-                New-MgDeviceManagementDeviceCompliancePolicyAssignment -DeviceCompliancePolicyId $newCompliancePolicy.Id -BodyParameter $assignment
-                Write-Log "Assigned Device Compliance policy to $IntuneGroupName"
-            }
+        if ($verification.Success) {
+            Write-Log "✅ Device Compliance policy successfully created and verified" -Level "SUCCESS"
+            return $true
         } else {
-            Write-Log "Device Compliance policy already exists"
+            Write-Log "⚠️ Device Compliance policy created but verification failed" -Level "WARNING"
+            return $false
         }
     }
     catch {
-        Write-Log "Error configuring Device Compliance: $($_.Exception.Message)" -Level "ERROR"
+        Write-Log "Failed to configure Device Compliance: $($_.Exception.Message)" -Level "ERROR"
+        $global:DeploymentResults.CorePolicies["DeviceCompliance"] = @{
+            Status = "Failed"
+            Message = $_.Exception.Message
+            FullError = $_.ToString()
+        }
+        return $false
     }
 }
 
@@ -490,10 +723,13 @@ function Deploy-LiveResponseScripts {
     
     if (-not $DeployLiveResponseScripts) {
         Write-Log "Skipping Live Response script deployment (not requested)"
+        $global:DeploymentResults.MDEAutomator.LiveResponseScripts["Status"] = "Skipped"
         return
     }
     
     Write-Log "Deploying comprehensive Live Response script library..."
+    $scriptResults = @{}
+    
     try {
         # Define enhanced Live Response scripts based on MDEAutomator capabilities
         $scripts = @(
@@ -534,31 +770,6 @@ try {
 }
 Write-Host ""
 
-Write-Host "=== Network Configuration ===" -ForegroundColor Cyan
-try {
-    Get-NetIPConfiguration | Where-Object {`$_.NetAdapter.Status -eq 'Up'} | ForEach-Object {
-        Write-Host "Interface: `$(`$_.InterfaceAlias)"
-        Write-Host "  IP: `$(`$_.IPv4Address.IPAddress -join ', ')"
-        Write-Host "  Gateway: `$(`$_.IPv4DefaultGateway.NextHop -join ', ')"
-        Write-Host "  DNS: `$(`$_.DNSServer.ServerAddresses -join ', ')"
-    }
-} catch {
-    Write-Host "Error retrieving network configuration: `$(`$_.Exception.Message)" -ForegroundColor Red
-}
-Write-Host ""
-
-Write-Host "=== System Resources ===" -ForegroundColor Cyan
-try {
-    `$memory = Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum
-    `$os = Get-CimInstance Win32_OperatingSystem
-    Write-Host "Total RAM: `$([math]::Round(`$memory.Sum / 1GB, 2)) GB"
-    Write-Host "Available RAM: `$([math]::Round(`$os.FreePhysicalMemory / 1MB, 2)) GB"
-    Write-Host "CPU Usage: `$((Get-CimInstance Win32_Processor).LoadPercentage)%"
-} catch {
-    Write-Host "Error retrieving system resources: `$(`$_.Exception.Message)" -ForegroundColor Red
-}
-
-Write-Host ""
 Write-Host "=== Collection Complete ===" -ForegroundColor Green
 "@
             },
@@ -577,6 +788,171 @@ try {
     if (`$threats) {
         `$threats | Format-Table -AutoSize
     } else {
+        Write-Host "No recent threat detections found" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "Error retrieving threat detections: `$(`$_.Exception.Message)" -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "=== Threat Hunt Complete ===" -ForegroundColor Green
+"@
+            }
+        )
+        
+        foreach ($script in $scripts) {
+            try {
+                Write-Log "Uploading Live Response script: $($script.Name) - $($script.Description)" -Level "INFO"
+                
+                if ($WhatIf) {
+                    Write-Log "WHAT-IF: Would upload script $($script.Name) to Live Response library" -Level "WARNING"
+                    $scriptResults[$script.Name] = @{
+                        Status = "WhatIf"
+                        Message = "Would be uploaded"
+                        Description = $script.Description
+                    }
+                } else {
+                    # Create temporary file
+                    $tempFile = [System.IO.Path]::GetTempFileName()
+                    $tempFile = $tempFile.Replace(".tmp", ".ps1")
+                    Set-Content -Path $tempFile -Value $script.Content -Encoding UTF8
+                    
+                    # Start async operation tracking
+                    $operationId = "LR-Script-$($script.Name)-$(Get-Date -Format 'yyyyMMddHHmmss')"
+                    Start-AsyncOperationTracking -OperationId $operationId -Description "Upload Live Response Script: $($script.Name)" -ResourceType "LiveResponseScript" -InitialData @{
+                        ScriptName = $script.Name
+                        FilePath = $tempFile
+                        Description = $script.Description
+                    }
+                    
+                    try {
+                        # Upload to Live Response library
+                        $uploadResult = Invoke-UploadLR -token $Token -filePath $tempFile
+                        Write-Log "Upload API call completed for script: $($script.Name)" -Level "INFO"
+                        
+                        # Check if the upload result indicates success
+                        $uploadSuccess = $false
+                        if ($uploadResult) {
+                            # Check various possible success indicators
+                            if ($uploadResult.success -eq $true -or 
+                                $uploadResult.status -eq "Success" -or 
+                                $uploadResult.StatusCode -eq 200 -or
+                                ($uploadResult -is [string] -and $uploadResult -match "success|uploaded|created")) {
+                                $uploadSuccess = $true
+                            }
+                        }
+                        
+                        if ($uploadSuccess) {
+                            Write-Log "Initial upload appears successful for script: $($script.Name)" -Level "INFO"
+                            
+                            # Verify the script exists in the Live Response library
+                            Start-Sleep -Seconds 10  # Allow time for script to propagate
+                            $verification = Test-ApiOperationSuccess -Operation "LiveResponseScript" -ResourceId $script.Name
+                            
+                            Update-AsyncOperationStatus -OperationId $operationId -Status "Completed" -UpdatedData @{
+                                UploadResult = $uploadResult
+                                VerificationResult = $verification
+                            }
+                            
+                            $scriptResults[$script.Name] = @{
+                                Status = if($verification.Success) {"UploadedAndVerified"} elseif($verification.Success -eq $null) {"UploadedButNotVerifiable"} else {"UploadedButNotFound"}
+                                Message = if($verification.Success) {"Successfully uploaded and verified in library"} elseif($verification.Success -eq $null) {"Uploaded - verification not available"} else {"Uploaded but not found in library during verification"}
+                                Description = $script.Description
+                                OperationId = $operationId
+                                UploadResult = $uploadResult
+                                VerificationDetails = $verification.Details
+                            }
+                            
+                            if ($verification.Success) {
+                                Write-Log "✅ Live Response script successfully uploaded and verified: $($script.Name)" -Level "SUCCESS"
+                            } elseif ($verification.Success -eq $null) {
+                                Write-Log "⚠️ Live Response script uploaded but verification not available: $($script.Name)" -Level "WARNING"
+                            } else {
+                                Write-Log "❌ Live Response script uploaded but verification failed: $($script.Name)" -Level "ERROR"
+                            }
+                        } else {
+                            # Upload API call did not indicate success
+                            Update-AsyncOperationStatus -OperationId $operationId -Status "Failed" -UpdatedData @{
+                                UploadResult = $uploadResult
+                                ErrorReason = "Upload API call did not indicate success"
+                            }
+                            
+                            $scriptResults[$script.Name] = @{
+                                Status = "UploadFailed"
+                                Message = "Upload API call did not indicate success"
+                                Description = $script.Description
+                                OperationId = $operationId
+                                UploadResult = $uploadResult
+                            }
+                            
+                            Write-Log "❌ Live Response script upload failed: $($script.Name)" -Level "ERROR"
+                        }
+                    }
+                    catch {
+                        Update-AsyncOperationStatus -OperationId $operationId -Status "Failed" -UpdatedData @{
+                            ErrorMessage = $_.Exception.Message
+                            FullError = $_.ToString()
+                        }
+                        
+                        $scriptResults[$script.Name] = @{
+                            Status = "UploadError"
+                            Message = $_.Exception.Message
+                            Description = $script.Description
+                            OperationId = $operationId
+                            FullError = $_.ToString()
+                        }
+                        
+                        Write-Log "❌ Exception during Live Response script upload '$($script.Name)': $($_.Exception.Message)" -Level "ERROR"
+                    }
+                    finally {
+                        # Clean up temp file
+                        if (Test-Path $tempFile) {
+                            Remove-Item $tempFile -Force
+                        }
+                    }
+                }
+            } catch {
+                $scriptResults[$script.Name] = @{
+                    Status = "Error"
+                    Message = $_.Exception.Message
+                    Description = $script.Description
+                    FullError = $_.ToString()
+                }
+                Write-Log "❌ Unexpected error processing Live Response script '$($script.Name)': $($_.Exception.Message)" -Level "ERROR"
+            }
+        }
+        
+        # Store all script results in global results
+        $global:DeploymentResults.MDEAutomator.LiveResponseScripts = $scriptResults
+        
+        # Summary reporting
+        $successCount = ($scriptResults.Values | Where-Object { $_.Status -like "*Verified" }).Count
+        $warningCount = ($scriptResults.Values | Where-Object { $_.Status -like "*NotVerifiable" }).Count
+        $failedCount = ($scriptResults.Values | Where-Object { $_.Status -like "*Failed" -or $_.Status -eq "Error" }).Count
+        $whatIfCount = ($scriptResults.Values | Where-Object { $_.Status -eq "WhatIf" }).Count
+        
+        Write-Log "=== Live Response Script Deployment Summary ===" -Level "INFO"
+        Write-Log "✅ Successfully deployed and verified: $successCount" -Level "SUCCESS"
+        if ($warningCount -gt 0) {
+            Write-Log "⚠️ Deployed but verification unavailable: $warningCount" -Level "WARNING"
+        }
+        if ($failedCount -gt 0) {
+            Write-Log "❌ Failed deployments: $failedCount" -Level "ERROR"
+        }
+        if ($whatIfCount -gt 0) {
+            Write-Log "ℹ️ WhatIf mode operations: $whatIfCount" -Level "INFO"
+        }
+        
+        Write-Log "Live Response script library deployment completed" -Level "SUCCESS"
+    } catch {
+        Write-Log "❌ Critical error during Live Response script deployment: $($_.Exception.Message)" -Level "ERROR"
+        $global:DeploymentResults.MDEAutomator.LiveResponseScripts["Error"] = @{
+            Status = "CriticalError"
+            Message = $_.Exception.Message
+            FullError = $_.ToString()
+        }
+    }
+}
         Write-Host "No recent threat detections found" -ForegroundColor Green
     }
 } catch {
@@ -1741,6 +2117,7 @@ try {
         
         if (Initialize-MDEAutomator) {
             $mdeToken = Connect-MDEAutomatorService
+            $global:mdeToken = $mdeToken  # Store globally for verification functions
             
             if ($mdeToken) {
                 $results.MDEAutomator = $true

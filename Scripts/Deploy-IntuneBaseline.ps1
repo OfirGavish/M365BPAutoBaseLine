@@ -112,7 +112,17 @@ param(
     [switch]$ReportOnly,
     
     [Parameter(Mandatory = $false)]
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    
+    # Conflict Resolution Parameters (to coordinate with DefenderBusiness/MDEAutomator)
+    [Parameter(Mandatory = $false)]
+    [switch]$ModifyCompliance,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$ExcludeASR,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$ExcludeTamperProtection
 )
 
 # Global variables
@@ -345,16 +355,44 @@ function Get-BaselinePolicies {
     # Look for JSON files (IntuneManagement format)
     $jsonFiles = Get-ChildItem -Path $platformPath -Filter "*.json" -Recurse
     foreach ($file in $jsonFiles) {
-        $policies += @{
+        $policyInfo = @{
             Platform = $Platform
             Type = "IntuneManagement"
             Path = $file.FullName
             Name = $file.BaseName
             Category = (Split-Path $file.Directory -Leaf)
         }
+        
+        # Apply conflict resolution filters
+        $shouldExclude = $false
+        
+        # Check for ASR exclusion
+        if ($ExcludeASR -and ($file.Name -match "ASR|Attack.*Surface|Surface.*Reduction")) {
+            Write-Log "Excluding ASR policy due to conflict resolution: $($file.Name)" -Level "WARNING"
+            $shouldExclude = $true
+        }
+        
+        # Check for Tamper Protection exclusion  
+        if ($ExcludeTamperProtection -and ($file.Name -match "Tamper|Protection")) {
+            Write-Log "Excluding Tamper Protection policy due to conflict resolution: $($file.Name)" -Level "WARNING"
+            $shouldExclude = $true
+        }
+        
+        # Check for general exclusions
+        foreach ($exclude in $ExcludePolicies) {
+            if ($file.Name -match $exclude) {
+                Write-Log "Excluding policy due to ExcludePolicies filter: $($file.Name)" -Level "WARNING"
+                $shouldExclude = $true
+                break
+            }
+        }
+        
+        if (-not $shouldExclude) {
+            $policies += $policyInfo
+        }
     }
     
-    Write-Log "Found $($policies.Count) policies for platform: $Platform"
+    Write-Log "Found $($policies.Count) policies for platform: $Platform (after conflict resolution filtering)"
     return $policies
 }
 

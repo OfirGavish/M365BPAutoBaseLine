@@ -94,10 +94,23 @@ param(
 )
 
 # Function to log messages
+# Global variables for tracking
+$script:ComplianceResults = @()
+$script:Recommendations = @()
+$script:PolicyResults = @{
+    DKIM = @()
+    SafeLinks = @()
+    SafeAttachments = @()
+    AntiPhishing = @()
+}
+$script:DeploymentStartTime = Get-Date
+$script:LogFile = "M365BP-DefenderO365-Deployment-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+
+# Function to log messages with fixed log file
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "[$timestamp] [$Level] $Message"
+    $logEntry = "[$timestamp] [DefenderO365] [$Level] $Message"
     
     # Write to console with color
     $color = switch ($Level) {
@@ -108,16 +121,57 @@ function Write-Log {
     }
     Write-Host $logEntry -ForegroundColor $color
     
-    # Write to log file
-    $logFile = "M365BP-DefenderO365-Deployment-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-    Add-Content -Path $logFile -Value $logEntry -ErrorAction SilentlyContinue
+    # Write to consistent log file (don't create new file each time!)
+    Add-Content -Path $script:LogFile -Value $logEntry -ErrorAction SilentlyContinue
 }
 
-# Global variables for tracking
-$script:ComplianceResults = @()
-$script:Recommendations = @()
-$script:PolicyResults = @{
-    DKIM = @()
+# Function to verify Exchange Online connection
+function Test-ExchangeOnlineConnection {
+    try {
+        $connection = Get-ConnectionInformation -ErrorAction Stop
+        if ($connection) {
+            Write-Log "Exchange Online connection verified: $($connection.TenantID)" -Level "SUCCESS"
+            return $true
+        }
+    }
+    catch {
+        Write-Log "Exchange Online connection failed: $($_.Exception.Message)" -Level "ERROR"
+        return $false
+    }
+    return $false
+}
+
+# Function to verify policy creation/update
+function Test-PolicyExists {
+    param(
+        [string]$PolicyName,
+        [string]$PolicyType
+    )
+    
+    try {
+        switch ($PolicyType) {
+            "SafeLinks" {
+                $policy = Get-SafeLinksPolicy -Identity $PolicyName -ErrorAction SilentlyContinue
+                return $null -ne $policy
+            }
+            "SafeAttachments" {
+                $policy = Get-SafeAttachmentsPolicy -Identity $PolicyName -ErrorAction SilentlyContinue
+                return $null -ne $policy
+            }
+            "AntiPhishing" {
+                $policy = Get-AntiPhishPolicy -Identity $PolicyName -ErrorAction SilentlyContinue
+                return $null -ne $policy
+            }
+            default {
+                return $false
+            }
+        }
+    }
+    catch {
+        Write-Log "Error checking policy $PolicyName : $($_.Exception.Message)" -Level "ERROR"
+        return $false
+    }
+}
     SafeLinks = @()
     SafeAttachments = @()
     AntiPhishing = @()
@@ -381,14 +435,28 @@ function Set-SafeLinksAndAttachments {
                     $result.Success = $true
                 } else {
                     try {
-                        New-SafeLinksPolicy -Name "M365BP-SafeLinks-Policy" @safeLinksConfig
-                        Write-Log "Created Safe Links policy with enhanced settings" -Level "SUCCESS"
-                        $result.Action = "Created"
-                        $result.Success = $true
+                        # Verify Exchange Online connection first
+                        if (!(Test-ExchangeOnlineConnection)) {
+                            throw "Exchange Online connection required but not available"
+                        }
+                        
+                        Write-Log "Creating Safe Links policy..." -Level "INFO"
+                        New-SafeLinksPolicy -Name "M365BP-SafeLinks-Policy" @safeLinksConfig -ErrorAction Stop
+                        
+                        # Verify policy was actually created
+                        Start-Sleep -Seconds 2  # Give time for policy to be created
+                        if (Test-PolicyExists -PolicyName "M365BP-SafeLinks-Policy" -PolicyType "SafeLinks") {
+                            Write-Log "Successfully created and verified Safe Links policy with enhanced settings" -Level "SUCCESS"
+                            $result.Action = "Created"
+                            $result.Success = $true
+                        } else {
+                            throw "Policy creation appeared successful but policy not found in verification"
+                        }
                     }
                     catch {
                         Write-Log "Failed to create Safe Links policy: $($_.Exception.Message)" -Level "ERROR"
                         $result.Error = $_.Exception.Message
+                        $result.Success = $false
                     }
                 }
             } else {

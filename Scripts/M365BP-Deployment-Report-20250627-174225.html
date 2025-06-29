@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>M365 Business Premium Deployment Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #0078d4; }
+        h2 { color: #106ebe; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>Microsoft 365 Business Premium Security Baseline Deployment Report</h1>
+    <p><strong>Organization:</strong> MSCloudNinja</p>
+    <p><strong>Deployment Date:</strong> 2025-06-27 17:42:25</p>
+    <p><strong>Components Deployed:</strong> DefenderO365</p>
+    
+    <h2>Deployment Summary</h2>
+    <table>
+        <tr><th>Component</th><th>Status</th><th>Notes</th></tr>        <tr><td>DefenderO365</td><td class='success'>Completed</td><td>Baseline configuration applied</td></tr>
+    </table>
+    
+    <h2>Next Steps</h2>
+    <ul>
+        <li><strong>Review Conditional Access policies:</strong> All policies were deployed in REPORT-ONLY mode for safety</li>
+        <li><strong>Monitor policy reports:</strong> Check Azure AD sign-in logs to see policy impact</li>
+        <li><strong>Enable policies:</strong> Use the Enable-ConditionalAccessPolicies.ps1 script to safely enable policies</li>
+        <li><strong>Test enhanced MDE features:</strong> Live Response scripts, custom detections, and threat intelligence are now available</li>
+        <li><strong>Test with pilot users:</strong> Enable policies gradually for pilot groups first</li>
+        <li>Review all policies in the respective admin centers</li>
+        <li>Monitor security dashboard for alerts and tune detection rules as needed</li>
+        <li>Schedule regular policy reviews and updates</li>
+        <li>Train users on new security features</li>
+    </ul>
+    
+    <h2>Important Safety Information</h2>
+    <div style="background-color: #fff3cd; padding: 15px; border: 1px solid #ffeaa7; border-radius: 5px;">
+        <h3>⚠️ Admin Device Compliance Policy</h3>
+        <p>The <strong>M365BP-Admin-Require-Compliant-Device</strong> policy was created in REPORT-ONLY mode to prevent admin lockout.</p>
+        <p><strong>Before enabling this policy:</strong></p>
+        <ul>
+            <li>Ensure your admin device is compliant with Intune policies</li>
+            <li>Have a break-glass account available</li>
+            <li>Test with a non-critical admin account first</li>
+        </ul>
+        <p>Use the <code>Enable-ConditionalAccessPolicies.ps1</code> script to safely enable policies after testing.</p>
+    </div>
+    
+    <h2>Log File</h2>
+    <p>Detailed deployment logs can be found at: <code>C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-20250627-174225.log</code></p>
+</body>
+</html>

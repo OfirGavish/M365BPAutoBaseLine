@@ -1,0 +1,77 @@
+**********************
+PowerShell transcript start
+Start time: 20250627174225
+Username: ESSENCESECURITY\ofirga
+RunAs User: ESSENCESECURITY\ofirga
+Configuration Name: 
+Machine: ES-OFIRGA-L (Microsoft Windows NT 10.0.22631.0)
+Host Application: C:\Program Files\PowerShell\7\pwsh.dll -noexit -command try { . "c:\Users\ofirga\AppData\Local\Programs\Microsoft VS Code\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 16656
+PSVersion: 7.5.2
+PSEdition: Core
+GitCommitId: 7.5.2
+OS: Microsoft Windows 10.0.22631
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+Transcript started, output file is C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-FullTranscript-20250627-174225.log
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                Microsoft 365 Business Premium Security Baseline             ║
+║                           Automated Deployment Tool                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+[2025-06-27 17:42:25] [MAIN] [INFO] Starting M365 Business Premium baseline deployment for: MSCloudNinja
+[2025-06-27 17:42:25] [MAIN] [INFO] Components to deploy: DefenderO365
+[2025-06-27 17:42:25] [MAIN] [INFO] Log file: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-20250627-174225.log
+[2025-06-27 17:42:25] [MAIN] [INFO] Validating prerequisites...
+[2025-06-27 17:42:25] [MAIN] [INFO] Module already loaded: ExchangeOnlineManagement
+[2025-06-27 17:42:25] [MAIN] [SUCCESS] Prerequisites validation completed
+[2025-06-27 17:42:25] [MAIN] [INFO] Using default configuration
+[2025-06-27 17:42:25] [CONFIG] [INFO] Using configuration: {
+  "IncludeBYOD": false,
+  "ServiceAccounts": [],
+  "PolicyPreset": "Standard",
+  "IncludeMacOS": false,
+  "IntuneGroupName": "All Users",
+  "IntuneBaselineVersion": "Latest",
+  "EnableSecurityDefaults": false,
+  "RetentionPeriodYears": 7,
+  "AllowedCountries": [
+    "US",
+    "CA",
+    "GB",
+    "AU",
+    "DE",
+    "FR",
+    "NL",
+    "BE",
+    "LU"
+  ],
+  "DeployAdvancedFeatures": {
+    "IsPresent": true
+  },
+  "BreakGlassAccounts": [],
+  "IntuneImportMethod": "IntuneManagement"
+}
+[2025-06-27 17:42:25] [DEPLOY] [INFO] Starting deployment process...
+[2025-06-27 17:42:25] [DEFENDERO365] [INFO] === Starting DefenderO365 deployment ===
+[2025-06-27 17:42:25] [MAIN] [INFO] === Deploying Defender for Office 365 Baseline ===
+[2025-06-27 17:42:25] [MAIN] [INFO] WHATIF: Would execute Deploy-DefenderO365Baseline.ps1 with parameters: {
+  "PolicyPreset": "Standard",
+  "WhatIf": true,
+  "ServiceAccounts": []
+}
+[2025-06-27 17:42:25] [MAIN] [SUCCESS] Defender for Office 365 deployment completed
+[2025-06-27 17:42:25] [DEFENDERO365] [SUCCESS] === DefenderO365 deployment completed successfully ===
+[2025-06-27 17:42:25] [MAIN] [INFO] === Generating Deployment Report ===
+[2025-06-27 17:42:25] [MAIN] [SUCCESS] Deployment report generated: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-Report-20250627-174225.html
+[2025-06-27 17:42:25] [COMPLETE] [SUCCESS] === DEPLOYMENT COMPLETED SUCCESSFULLY ===
+[2025-06-27 17:42:25] [COMPLETE] [SUCCESS] Report generated: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-Report-20250627-174225.html
+[2025-06-27 17:42:25] [COMPLETE] [SUCCESS] Log file: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-Deployment-20250627-174225.log
+[2025-06-27 17:42:25] [COMPLETE] [SUCCESS] Full transcript file: C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\M365BP-FullTranscript-20250627-174225.log
+**********************
+PowerShell transcript end
+End time: 20250627174225
+**********************

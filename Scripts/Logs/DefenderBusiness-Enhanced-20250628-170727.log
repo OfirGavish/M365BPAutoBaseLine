@@ -1,0 +1,18 @@
+[2025-06-28 17:07:27] [SUCCESS] Starting Enhanced Microsoft Defender for Business deployment...
+[2025-06-28 17:07:27] [INFO] Version: 2.0 with comprehensive MDEAutomator integration
+[2025-06-28 17:07:27] [INFO] Log file: .\Logs\DefenderBusiness-Enhanced-20250628-170727.log
+[2025-06-28 17:07:27] [WARNING] 🔍 Running in WHAT-IF mode - no changes will be made
+[2025-06-28 17:07:27] [INFO] Checking prerequisites...
+[2025-06-28 17:07:27] [INFO] Cleaning up existing Graph module sessions to prevent conflicts...
+[2025-06-28 17:07:27] [INFO] Removing 1 existing Graph modules...
+[2025-06-28 17:07:28] [INFO] Importing module: Microsoft.Graph.Authentication
+[2025-06-28 17:07:28] [SUCCESS] Successfully imported Microsoft.Graph.Authentication
+[2025-06-28 17:07:29] [INFO] Importing module: Microsoft.Graph.DeviceManagement
+[2025-06-28 17:07:29] [ERROR] Failed to import Microsoft.Graph.DeviceManagement: Could not load file or assembly 'Microsoft.Graph.Authentication, Version=2.26.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'. Assembly with same name is already loaded
+[2025-06-28 17:07:29] [ERROR] ❌ Deployment failed: Required module Microsoft.Graph.DeviceManagement could not be loaded
+[2025-06-28 17:07:29] [ERROR] Stack trace: at Test-Prerequisites, C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\Deploy-DefenderBusinessBaseline-Enhanced.ps1: line 172
+at <ScriptBlock>, C:\Users\ofirga\source\repos\M365BPAutoBaseLine\Scripts\Deploy-DefenderBusinessBaseline-Enhanced.ps1: line 1845
+at <ScriptBlock>, <No file>: line 1
+[2025-06-28 17:07:29] [ERROR] Check the log file for detailed error information: .\Logs\DefenderBusiness-Enhanced-20250628-170727.log
+[2025-06-28 17:07:29] [INFO] Disconnecting from services...
+[2025-06-28 17:07:29] [INFO] Disconnected from services.

@@ -1,0 +1,19 @@
+{
+  "Timestamp": "2025-06-27T17:48:36.0666402+03:00",
+  "Instructions": {
+    "DefenderBusiness": "Apply these flags to Deploy-DefenderBusinessBaseline-Enhanced.ps1",
+    "Intune": "Apply these settings to Deploy-IntuneBaseline.ps1"
+  },
+  "ResolutionPlan": {
+    "DefenderBusiness": {
+      "DisableTamperProtection": true,
+      "DisableASR": true,
+      "DisableEndpointProtection": false,
+      "DisableCompliance": true
+    },
+    "Intune": {
+      "ExcludePolicies": [],
+      "EnableComprehensiveBaseline": true
+    }
+  }
+}

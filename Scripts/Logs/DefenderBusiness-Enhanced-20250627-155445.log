@@ -1,0 +1,45 @@
+[2025-06-27 15:54:45] [SUCCESS] Starting Enhanced Microsoft Defender for Business deployment...
+[2025-06-27 15:54:45] [INFO] Version: 2.0 with comprehensive MDEAutomator integration
+[2025-06-27 15:54:45] [INFO] Log file: .\Logs\DefenderBusiness-Enhanced-20250627-155445.log
+[2025-06-27 15:54:45] [INFO] Checking prerequisites...
+[2025-06-27 15:54:46] [INFO] Installing MDEAutomator from PowerShell Gallery...
+[2025-06-27 15:54:59] [SUCCESS] Successfully installed MDEAutomator module
+[2025-06-27 15:54:59] [INFO] Prerequisites check completed.
+[2025-06-27 15:54:59] [INFO] Connecting to Microsoft Graph and Intune...
+[2025-06-27 15:55:03] [INFO] Successfully connected to Microsoft Graph and Intune.
+[2025-06-27 15:55:03] [SUCCESS] === Deploying Core Security Baseline ===
+[2025-06-27 15:55:03] [INFO] Deploying basic Intune security policies...
+[2025-06-27 15:55:03] [INFO] Enabling Tamper Protection...
+[2025-06-27 15:55:03] [ERROR] Error enabling Tamper Protection: The 'Get-MgDeviceManagementDeviceConfiguration' command was found in the module 'Microsoft.Graph.DeviceManagement', but the module could not be loaded due to the following error: [Could not load file or assembly 'Microsoft.Graph.Authentication, Version=2.26.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'. Assembly with same name is already loaded]
+For more information, run 'Import-Module Microsoft.Graph.DeviceManagement'.
+[2025-06-27 15:55:03] [INFO] Configuring Attack Surface Reduction (ASR) rules...
+[2025-06-27 15:55:04] [ERROR] Error configuring ASR rules: The 'Get-MgDeviceManagementDeviceConfiguration' command was found in the module 'Microsoft.Graph.DeviceManagement', but the module could not be loaded due to the following error: [Could not load file or assembly 'Microsoft.Graph.Authentication, Version=2.26.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'. Assembly with same name is already loaded]
+For more information, run 'Import-Module Microsoft.Graph.DeviceManagement'.
+[2025-06-27 15:55:04] [INFO] Configuring Automated Investigation and Remediation...
+[2025-06-27 15:55:04] [ERROR] Error configuring Automated Investigation: The 'Get-MgDeviceManagementDeviceConfiguration' command was found in the module 'Microsoft.Graph.DeviceManagement', but the module could not be loaded due to the following error: [Could not load file or assembly 'Microsoft.Graph.Authentication, Version=2.26.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'. Assembly with same name is already loaded]
+For more information, run 'Import-Module Microsoft.Graph.DeviceManagement'.
+[2025-06-27 15:55:04] [INFO] Configuring Device Compliance policy...
+[2025-06-27 15:55:05] [ERROR] Error configuring Device Compliance: The 'Get-MgDeviceManagementDeviceCompliancePolicy' command was found in the module 'Microsoft.Graph.DeviceManagement', but the module could not be loaded due to the following error: [Could not load file or assembly 'Microsoft.Graph.Authentication, Version=2.26.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'. Assembly with same name is already loaded]
+For more information, run 'Import-Module Microsoft.Graph.DeviceManagement'.
+[2025-06-27 15:55:05] [INFO] Basic Intune policies deployed successfully.
+[2025-06-27 15:55:05] [SUCCESS] === Starting MDEAutomator Integration ===
+[2025-06-27 15:55:05] [INFO] Initializing MDEAutomator integration...
+[2025-06-27 15:55:05] [WARNING] MDEAutomatorAppId not provided. Skipping MDEAutomator setup.
+[2025-06-27 15:55:05] [WARNING] ❌ MDEAutomator initialization failed. Skipping integration.
+[2025-06-27 15:55:05] [INFO] Generating comprehensive deployment report...
+[2025-06-27 15:55:05] [SUCCESS] Deployment report saved to: .\Logs\DefenderBusiness-Enhanced-20250627-155445-Report.html
+[2025-06-27 15:55:05] [SUCCESS] Deployment report opened in default browser
+[2025-06-27 15:55:05] [SUCCESS] 🎉 Enhanced Defender for Business deployment completed successfully!
+[2025-06-27 15:55:05] [INFO] 
+[2025-06-27 15:55:05] [SUCCESS] 📋 Deployment Summary:
+[2025-06-27 15:55:05] [INFO]   ✅ Core security baseline: Deployed
+[2025-06-27 15:55:05] [INFO]   ⏭️ MDEAutomator integration: Skipped
+[2025-06-27 15:55:05] [INFO]   ⏭️ Environment testing: Skipped
+[2025-06-27 15:55:05] [INFO] 
+[2025-06-27 15:55:05] [WARNING] 📝 Important Notes:
+[2025-06-27 15:55:05] [INFO]   • Review all deployed policies and test with pilot devices before full rollout
+[2025-06-27 15:55:05] [INFO]   • Monitor security dashboard for alerts and tune detection rules as needed
+[2025-06-27 15:55:05] [INFO]   • Replace example threat intelligence indicators with real IOCs in production
+[2025-06-27 15:55:05] [INFO]   • Regularly update and maintain custom detection rules
+[2025-06-27 15:55:05] [INFO] Disconnecting from services...
+[2025-06-27 15:55:05] [INFO] Disconnected from services.
